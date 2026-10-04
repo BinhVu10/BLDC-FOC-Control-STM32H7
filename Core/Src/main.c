@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "adc.h"
+#include "dma.h"
 #include "memorymap.h"
 #include "spi.h"
 #include "tim.h"
@@ -31,8 +32,9 @@
 #include <gpio_port.h>
 #include <pwm_port.h>
 #include "current_sensor.h"
-#include <mt6826S.h>
 #include <config.h>
+#include "Calib.h"
+#include "encoder_mt6826.h"
 
 /* USER CODE END Includes */
 
@@ -55,24 +57,35 @@
 
 /* USER CODE BEGIN PV */
 
-	volatile uint32_t elapsed_time = 0;
+	// KHỞI TẠO CÁC BIẾN, TRẠNG THÁI, STRUCT
+	volatile uint32_t foc_elapsed_time = 0;
 
+	volatile uint32_t spi3_elapsed_time = 0;
 
-	state_t state;													// Quản lý các state
+	volatile sys_state_t state;											// QUẢN LÝ STATE PROGRAM
 
-	mode_t ctrl_mode;												// Quản lý các mode control
+	volatile ctrl_mode_t ctrl_mode;										// QUẢN LÝ MODE CONTROL
 
+	volatile user_command_t user_command = {							// QUẢN LÝ USER COMMAND (HIGH LEVEL)
+		.pos_ref_deg = 0.0f,
+
+		.id_ref = 0.0f,
+
+		.id_ref = 0.0f,
+
+		.rpm_ref = 0.0f
+	};
 	uint8_t new_mode = 0xff;
 
-	user_command_t user_command;
 
-	foc_t foc;														// Quản lý các trạng thái foc
+	foc_t foc;															// QUẢN LÝ STATES FOC
 
-	current_sensor_t current_sensor;								// Quản lý trạng thái feedback dòng
+	current_sensor_t current_sensor;									// QUẢN LÝ STATE FEEDBACK DÒNG
 
-	encoder_t encoder;												// Quản lý feedback encoder
+	encoder_t encoder;													// QUẢN LÝ FEEDBACK ENCODER
 
-	static volatile bool current_offset_done = false;				// flag check offset
+	static volatile bool current_offset_done = false;					// FLAG CHECK OFFSET
+
 
 /* USER CODE END PV */
 
@@ -109,6 +122,9 @@ int main(void)
 
   /* USER CODE BEGIN Init */
 
+  // BẬT I-CACHE
+  SCB_EnableICache();
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -123,6 +139,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_ADC1_Init();
   MX_ADC2_Init();
   MX_ADC3_Init();
@@ -131,21 +148,21 @@ int main(void)
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 
-  foc_init(&foc);												// Khởi tạo foc
+  foc_init(&foc);												// KHỞI TẠO FOC
 
-  current_sensor_init(&current_sensor);							// Khởi tạo current sensor
+  current_sensor_init(&current_sensor);							// KHỞI TẠO CURRENT SENSOR
 
-  encoder_init(&encoder);										// Khởi tạo encoder
+  encoder_init(&encoder);										// KHỞI TẠO ENCODER
 
-  // Set duty 3 pha bằng 50% nhằm calib current sensor
+  // SET DUTY 3 PHA BẰNG 50% NHẰM CALIB CURRENT SENSOR
 
-  drv_enable();													// Bật driver để current sense amplifier hoạt động
+  drv_enable();													// BẬT DRIVER �?Ể CURRENT SENSE AMPLIFIER HOẠT �?ỘNG
 
-  HAL_Delay(500);												// Current sense amplifier ổn định
+  HAL_Delay(500);												// CURRENT SENSE AMPLIFIER ỔN �?ỊNH
 
-  adc_start();													// Bật ADC Injected
+  adc_start();													// BẬT ADC INJECTED
 
-  pwm_start();													// Bật timer tạo TRGO, duty 3 pha bằng 50%
+  pwm_start();													// BẬT TIMER TẠO TRGO, DUTY 3 PHA BẰNG 50%
 
   pwm_set((uint32_t)  htim1.Init.Period / 2U, (uint32_t) htim1.Init.Period / 2U, (uint32_t) htim1.Init.Period / 2U);
 
@@ -153,11 +170,13 @@ int main(void)
 
   }
 
-  pwm_set(0U, 0U, 0U);
-
 //  foc_voltage_bus_read(&foc);
 //
-//  foc_run_calib_encoder(&foc, &encoder);
+//  run_calib_encoder(&foc, &encoder, CALIB_CYCLE);
+
+//
+//  pwm_set(0U, 0U, 0U);
+
 
   /* USER CODE END 2 */
 
@@ -261,64 +280,85 @@ void PeriphCommonClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+// HÀM NGẮT SPI
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)
 {
-	(void)hspi;
+	// NGẮT SPI3 LÀ ENCODER DMA, THỜI GIAN HIỆN TẠI LÀ 1-2 US
+	if(hspi->Instance == SPI3){
 
+//		  __HAL_TIM_SET_COUNTER(&htim2, 0);
+
+		// KÉO CHÂN LÊN 1 ĐỂ KẾT THÚC TRUYỀN SPI DMA
+		HAL_GPIO_WritePin(ENCODER_CS_GPIO_Port, ENCODER_CS_Pin, GPIO_PIN_SET);
+
+		// READ VALUE ENCODER
+		encoder_Read_Angle(&encoder);
+
+		encoder.dma_busy = false;
+
+//		spi3_elapsed_time = __HAL_TIM_GET_COUNTER(&htim2);
+
+	}
 }
 
+// NẾU LỖI NHẢY VÀO SET ENCODER LỖI
+void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi)
+{
+	if (hspi->Instance == SPI3) {
+
+		encoder_DMA_Error(&encoder);
+
+	}
+}
+
+
+// NGẮT ADC
 void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
 
-
-
   if (hadc->Instance == ADC1) {
-	  __HAL_TIM_SET_COUNTER(&htim2, 0);
-	// Nếu mà chưa get offset xong thì sẽ lấy offset
 
+	  __HAL_TIM_SET_COUNTER(&htim2, 0);
+
+
+	// NẾU MÀ CHƯA GET OFFSET XONG THÌ SẼ LẤY OFFSET
     if (!current_offset_done) {
 
       current_offset_done = current_sensor_get_offset(&current_sensor);
 
     }
-     // Khi lấy offset xong, ngắt ADC kích, chu kỳ FOC bắt đầu hoạt động
+
+//      KHI LẤY OFFSET XONG, NGẮT ADC RUN, CHU KỲ FOC HOẠT �?ỘNG
     else {
 
-    	// Voltage bus read
+    	// VOLTAGE BUS READ
     	foc_voltage_bus_read(&foc);
 
-      // Read current
+      // READ CURRENT
       current_sensor_read(&foc, &current_sensor);
 
-      // Read encorder
-      encoder_start_TransmitReceive(&encoder);
+      // CẬP NHẬT VẬN TỐC
+      encoder_Update_Speed(&encoder);
 
-      // Nếu mà crc không fault sẽ cập nhật góc mới, còn không sẽ chạy code cũ
-	  if (encoder.data_valid == true) {
+      // BẮT ĐẦU ĐỌC ENCODER DMA
+      encoder_Start_Read_DMA(&encoder);
 
-		float angle_m_new = encoder_read_angle(&encoder);
+      // CHẠY VÒNG VỊ TRÍ KHI ĐÃ KHỞI TẠO
+      if (encoder.is_angle_initlize == true) {
 
-		// Nếu góc return ok thì cập nhật góc điện, góc multi-angle
-		if ((encoder.crc_fault == false) && (encoder.status == 0U)) {
+        foc_ctrl_pos_run(&foc, &encoder, DEG_TO_RAD(user_command.pos_ref_deg));
 
-		  foc_update_angle(&foc, angle_m_new);
-
-		}
       }
 
-      // Chạy vòng vị trí sau khi đã có góc encoder hợp lệ, và tạo mốc góc 0 độ
-      if (foc.angle_initialized == true) {
-
-        foc_ctrl_pos_run(&foc, DEG_TO_RAD(user_command.pos_ref_deg));
-      }
-
-//	  if (foc.angle_initialized == true) {
+//	  if (encoder.is_angle_initlize == true) {
 //
-//	    foc_speed_ctrl_run(&foc, user_command.rpm_ref);
+//	    foc_speed_ctrl_run(&foc, &encoder, user_command.rpm_ref);
 //	  }
+
+    foc_elapsed_time = __HAL_TIM_GET_COUNTER(&htim2);
 
     }
 
-    elapsed_time = __HAL_TIM_GET_COUNTER(&htim2);
   }
 
 }
@@ -365,9 +405,12 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+
   }
-  /* USER CODE END Error_Handler_Debug */
+
 }
+  /* USER CODE END Error_Handler_Debug */
+
 
 #ifdef  USE_FULL_ASSERT
 /**

@@ -8,7 +8,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "pid.h"
-#include "mt6826s.h"
+#include "encoder_mt6826.h"
 #include "pwm_port.h"
 #include "stm32h7xx_hal.h"
 #include "config.h"
@@ -17,94 +17,65 @@
 
 typedef struct {
 
-	float omega_ref_rpm;										// Output of position controller
+	float omega_ref_rpm;                                        // LỆNH RPM TỪ PI VỊ TRÍ, KHÔNG PHẢI FEEDBACK ENCODER
 
-	float id;													// Output of speed controller
+	float id;													// OUTPUT OF SPEED CONTROLLER
 
-	float iq;													// Output of speed controller
+	float iq;													// OUTPUT OF SPEED CONTROLLER
 
-    float vd;													// Output of current controller
+    float vd;													// OUTPUT OF CURRENT CONTROLLER
 
-    float vq;													// Output of current controller
+    float vq;													// OUTPUT OF CURRENT CONTROLLER
 
-    float v_alpha;												// Output of Inversed Park
+    float v_alpha;												// OUTPUT OF INVERSED PARK
 
-    float v_beta;												// Output of Inversed Park
+    float v_beta;												// OUTPUT OF INVERSED PARK
 
-    float id_fb;												// feedback current d
+    float id_fb;												// FEEDBACK CURRENT D
 
-    float iq_fb;												// feedback current q
+    float iq_fb;												// FEEDBACK CURRENT Q
 
-    float ia_fb;												// feedback current phase a
+    float ia_fb;												// FEEDBACK CURRENT PHASE A
 
-    float ib_fb;												// feedback current phase b
+    float ib_fb;												// FEEDBACK CURRENT PHASE B
 
-    float ic_fb;												// feedback current phase c
+    float ic_fb;												// FEEDBACK CURRENT PHASE C
 
-    float omega_m;												// Tốc độ cơ sau hộp số (rad/s)
+    float duty_a;												// DUTY CYCLE CẤP CHO PHA A
 
-    float angle_m;												// Góc cơ encoder trong [0, 2*pi)
+    float duty_b;												// DUTY CYCLE CẤP CHO PHA B
 
-    float prev_angle_m;											// Góc encoder ở mẫu hợp lệ trước
+    float duty_c;												// DUTY CYCLE CẤP CHO PHA C
 
-    float position_zero_angle;									// Góc encoder khi bật nguồn, quy ước là 0 để tính vị trí
+    float v_bus;												// ĐIỆN ÁP BUS
 
-    float angle_delta_sum;										// Tổng delta góc để tính vận tốc
+    float voltage_limit_max;									// VDC/CĂN(3)
 
-    float omega_filter_rpm;										// Vận tốc đã qua lọc
+    float current_limit_max;                                    // GIỚI HẠN VECTOR DÒNG ĐẶT, A
 
-    float omega_e;												// Tốc độ điện
+    uint32_t speed_cnt;                                         // CHIA NHỊP PI VẬN TỐC; KHÁC BỘ ĐẾM ĐO VẬN TỐC TRONG ENCODER
 
-    float angle_e;												// Góc điện
+    uint32_t pos_cnt;											// CHIA NHỊP PI VỊ TRÍ
 
-    float multi_angle;											// Góc đa vòng ở đầu tải (rad)
+    // CONTROLLER
+     pi_t pi_id;												// BỘ ĐIỀU KHIỂN DÒNG ID
 
-    float multi_angle_deg;										// Góc đa vòng ở đầu tải (degree)
+     pi_t pi_iq;												// BỘ ĐIỀU KHIỂN DÒNG IQ
 
-    float offset_encorder;										// Offset góc cơ (rad)
+     pi_t pi_speed;												// BỘ ĐIỀU KHIỂN VẬN TỐC
 
-    float duty_a;												// duty cycle cấp cho pha a
-
-    float duty_b;												// duty cycle cấp cho pha b
-
-    float duty_c;												// duty cycle cấp cho pha c
-
-    float v_bus;												// điện áp bus
-
-    float voltage_limit_max;									// Vdc/căn(3)
-
-    float current_limit_max;									// 2.5*CURRENT_RATED
-
-    float speed_alpha_filter;									// Hệ số alpha của bộ lọc lpf dùng đề lọc tín hiệu encorder
-
-    int32_t turn_count;											// Số vòng quay của encoder kể từ khi bật nguồn
-
-    bool angle_initialized;										// Đã lấy góc ban đầu làm mốc 0
-
-    uint32_t speed_cnt;											// Biến đếm chu kỳ vòng vận tốc
-
-    uint32_t pos_cnt;											// Biến đếm chu kỳ vòng vị trí
-
-    // Controller
-     pi_t pi_id;												// Bộ điều khiển dòng id
-
-     pi_t pi_iq;												// Bộ điều khiển dòng iq
-
-     pi_t pi_speed;												// Bộ điều khiển vận tốc
-
-     pi_t pi_pos;												// Bộ điều khiển vị trí
+     pi_t pi_pos;												// BỘ ĐIỀU KHIỂN VỊ TRÍ
 
 } foc_t;
 
 void foc_init(foc_t *foc);
 
-void foc_current_ctrl_run(foc_t *foc, float id_ref, float iq_ref);
+// CÁC HÀM CONTROL ĐƯỢC GỌI THEO NHỊP FOC_FREQ_HZ, ENCODER ĐÃ CÓ MẪU HỢP LỆ.
+void foc_current_ctrl_run(foc_t *foc, const encoder_t *encoder, float id_ref, float iq_ref);
 
-void foc_speed_ctrl_run(foc_t *foc, float rpm_ref);
+void foc_speed_ctrl_run(foc_t *foc, const encoder_t *encoder, float rpm_ref);
 
-void foc_ctrl_pos_run(foc_t *foc, float pos_ref_rad);
-
-void foc_update_angle(foc_t *foc, float angle_m);
+void foc_ctrl_pos_run(foc_t *foc, const encoder_t *encoder, float pos_ref_rad);
 
 void foc_open_loop_control(foc_t *foc, float vd, float vq, float theta_e);
 
@@ -113,8 +84,6 @@ void foc_voltage_limit_dq(foc_t *foc, float *v_d, float *v_q);
 void foc_current_limit_dq(foc_t *foc, float *id, float *iq);
 
 void foc_zero_pwm_output(foc_t *foc);
-
-void foc_run_calib_encoder(foc_t *foc, encoder_t *encoder);
 
 void foc_off(foc_t *foc);
 

@@ -20,38 +20,33 @@ typedef struct{
 
 }user_command_t;
 
+// QUẢN LÝ CÁC TRẠNG THÁI CỦA HỆ THỐNG
 typedef enum{
 
-	MOTOR_IDLE,								// Chế độ chờ
+	SYS_IDLE,								// CHẾ ĐỘ CHỜ
 
-	MOTOR_INIT,								// Chế độ khởi động, init các tham số (init + calib)
+	SYS_START_UP,							// CHẾ ĐỘ KHỞI ĐỘNG, HOMING KHI HỆ THỐNG BẮT ĐẦU
 
-	MOTOR_RUNNING,							// Chế độ chạy, sẽ thực hiện các mode
+	SYS_RUNNING,							// CHẾ ĐỘ CHẠY, THỰC HIỆN CÁC
 
-	MOTOR_FAULT								// Chế độ lỗi
+	SYS_FAULT								// CHẾ ĐỘ LỖI
+}sys_state_t;
 
-}state_t;
 
-
-// Quản lý các chế độ điều khiển (Các hàm sẽ được quản lý trong foc.c)
-
+// QUẢN LÝ CÁC MODE ĐIỀU KHIỂN
 typedef enum{
 
 	CTRL_NONE,									// Chế độ không điều khiển gì (ban đầu mặc định sẽ là như thế)
 
-	CALIB_ENCODER_MODE,
+	CALIB_ENCODER_MODE,							// Mode calib encoder
 
-	CURRENT_CTRL_MODE,
+	CURRENT_CTRL_MODE,							// Mode điều khiển dòng (torque)
 
-	SPEED_CTRL_MODE,
+	SPEED_CTRL_MODE,							// Mode điều khiển vận tốc
 
-	POS_CTRL_MODE
+	POS_CTRL_MODE								// Mode điều khiển vị trí
 
-}mode_t;
-
-
-
-
+}ctrl_mode_t;
 
 
 
