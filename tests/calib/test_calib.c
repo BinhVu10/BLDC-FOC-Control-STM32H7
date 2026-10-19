@@ -118,7 +118,7 @@ int main(void)
     assert(!powered && stop_calls == 1U && cs == GPIO_PIN_SET);
     near(encoder.offset_encoder, 0.0f); // Circular average across 0/2*pi.
     near(encoder.theta_e, 16.0f * TWO_PI / ENCODER_CPR);
-    near(encoder.mechanical_zero_angle, PI / 2.0f);
+    near(encoder.mechanical_zero_angle, 0.0f);
     near(encoder.speed_after_gear, 12.0f); // Mode entry/exit owns estimator reset.
     near(encoder.speed_filter_after_gear, 10.0f);
 
@@ -132,7 +132,7 @@ int main(void)
             assert(reads == position && !powered && stop_calls == 1U);
             assert(cs == GPIO_PIN_SET && !encoder.success);
             near(encoder.offset_encoder, ENCODER_OFFSET);
-            near(encoder.mechanical_zero_angle, PI / 2.0f);
+            near(encoder.mechanical_zero_angle, 0.0f);
             float last_angle = position == 1U ? PI / 2.0f
                 : (float)raw_samples[position - 2U] * TWO_PI / ENCODER_CPR;
             near(encoder.theta_m, last_angle);

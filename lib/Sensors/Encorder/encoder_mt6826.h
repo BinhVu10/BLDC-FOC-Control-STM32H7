@@ -25,9 +25,9 @@ typedef struct
 
     float multi_angle_m;                                         // GÓC ROTOR ĐA VÒNG, RAD (CHƯA TRỪ MỐC ZERO)
 
-    float angle_after_gear;                                      // GÓC SAU GEAR SO VỚI LÚC KHỞI TẠO, RAD
+    float mechanical_angle;                                      // GÓC CƠ KHÍ SAU GEAR SO VỚI MỐC ZERO, RAD
 
-    float angle_after_gear_deg;									 // GÓC SAU GEAR , DEG
+    float mechanical_angle_deg;						    		 // GÓC CƠ KHÍ SAU GEAR SO VỚI MỐC ZERO, DEG
 
     float mechanical_zero_angle;								 // GÓC 0 CƠ KHÍ (LẤY LÀM MỐC)
 
@@ -55,7 +55,7 @@ typedef struct
 
     volatile uint8_t dma_busy;                                   // CỜ DMA_BUSY, DÙNG CHUNG GIỮA NGẮT ADC VÀ SPI
 
-    uint8_t is_angle_initlize;
+    volatile uint8_t angle_initialized;                         // FIRST VALID ANGLE FRAME RECEIVED
 
 }encoder_t;
 

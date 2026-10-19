@@ -28,7 +28,6 @@ void encoder_init(encoder_t *encoder)
 
     // CS Ở MỨC HIGH KHI CHƯA TRUYỀN FRAME.
     HAL_GPIO_WritePin(ENCODER_CS_GPIO_Port, ENCODER_CS_Pin, GPIO_PIN_SET);
-
 }
 
 // HÀM BẮT ĐẦU ĐỌC ENCODER SPI DMA
@@ -66,7 +65,7 @@ uint8_t encoder_Read_Polling(encoder_t *encoder)
 
     HAL_GPIO_WritePin(ENCODER_CS_GPIO_Port, ENCODER_CS_Pin, GPIO_PIN_RESET);
 
-    HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(  &hspi3, encoder->tx_buffer, encoder->rx_buffer, MT6826_FRAME_LENGTH, 1U);
+    HAL_StatusTypeDef status = HAL_SPI_TransmitReceive(&hspi3, encoder->tx_buffer, encoder->rx_buffer, MT6826_FRAME_LENGTH, 1U);
 
     HAL_GPIO_WritePin(ENCODER_CS_GPIO_Port, ENCODER_CS_Pin, GPIO_PIN_SET);
 
@@ -109,7 +108,6 @@ void encoder_Read_Angle(encoder_t *encoder)
             encoder->cnt_fault++;
 
         }
-
         return;
     }
 
@@ -117,10 +115,8 @@ void encoder_Read_Angle(encoder_t *encoder)
 
     float new_angle = (float)raw_angle * TWO_PI / (float)ENCODER_CPR;
 
-    // KHỞI TẠO GÓC 0 CƠ KHÍ TỪ MẪU HỢP LỆ ĐẦU TIÊN
-    if (!encoder->is_angle_initlize) {
-
-        encoder->mechanical_zero_angle = new_angle;
+    // KHỞI TẠO THEO DÕI GÓC TỪ MẪU HỢP LỆ ĐẦU TIÊN
+    if (!encoder->angle_initialized) {
 
         encoder->theta_m = new_angle;
 
@@ -130,7 +126,7 @@ void encoder_Read_Angle(encoder_t *encoder)
 
         encoder->speed_cnt = 0U;
 
-        encoder->is_angle_initlize = true;
+        encoder->angle_initialized = true;
 
     }
 
@@ -181,9 +177,9 @@ void update_multi_angle(encoder_t *encoder, float current_angle)
 
     encoder->multi_angle_m = current_angle + TWO_PI * (float)encoder->turn_count;
 
-    encoder->angle_after_gear =  (encoder->multi_angle_m - encoder->mechanical_zero_angle) / (float)GEAR_RATIO;
+    encoder->mechanical_angle = (encoder->multi_angle_m - encoder->mechanical_zero_angle) / (float)GEAR_RATIO;
 
-    encoder->angle_after_gear_deg = RAD_TO_DEG(encoder->angle_after_gear);
+    encoder->mechanical_angle_deg = RAD_TO_DEG(encoder->mechanical_angle);
 
     encoder->angle_delta_sum += delta_angle;
 }
@@ -191,12 +187,12 @@ void update_multi_angle(encoder_t *encoder, float current_angle)
 // CẬP NHẬT VẬN TỐC THEO CÙNG NHỊP SPEED_DIV VÀ LPF
 void encoder_Update_Speed(encoder_t *encoder)
 {
-    if (!encoder->is_angle_initlize) {
+    if (!encoder->angle_initialized) {
 
         return;
 
     }
-
+    
     encoder->speed_cnt++;
 
     if (encoder->speed_cnt < SPEED_DIV) {
@@ -234,7 +230,6 @@ void encoder_DMA_Error(encoder_t *encoder)
         encoder->cnt_fault++;
 
     }
-
     encoder->dma_busy = false;
 }
 
@@ -261,6 +256,5 @@ static uint8_t encoder_crc_calc(const uint8_t *data, uint8_t len)
             }
         }
     }
-
     return crc;
 }

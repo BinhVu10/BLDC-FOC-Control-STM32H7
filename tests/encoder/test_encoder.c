@@ -79,41 +79,45 @@ int main(void)
     memset(&e, 0xA5, sizeof(e));
     encoder_init(&e);
     assert(cs == GPIO_PIN_SET && !e.dma_busy && !e.success);
-    assert(!e.is_angle_initlize && e.speed_cnt == 0U && e.cnt_fault == 0U);
+    assert(!e.angle_initialized && e.speed_cnt == 0U && e.cnt_fault == 0U);
     near(e.offset_encoder, ENCODER_OFFSET);
     near(e.speed_after_gear, 0.0f);
     near(e.speed_filter_after_gear, 0.0f);
     for (unsigned i = 0; i < SPEED_DIV; ++i) encoder_Update_Speed(&e);
     assert(e.speed_cnt == 0U);
 
-    // A bad first frame must not capture the boot zero.
+    // A bad first frame must not initialize angle tracking.
     frame(&e, 100U, 0U);
     e.rx_buffer[5] ^= 1U;
     encoder_Read_Angle(&e);
-    assert(!e.is_angle_initlize && !e.success && e.crc_fault);
+    assert(!e.angle_initialized && !e.success && e.crc_fault);
     sample(&e, 8192U);
     near(e.theta_m, PI / 2.0f);
     near(e.multi_angle_m, PI / 2.0f);
-    near(e.mechanical_zero_angle, PI / 2.0f);
-    near(e.angle_after_gear, 0.0f);
+    near(e.mechanical_zero_angle, 0.0f);
+    near(e.mechanical_angle, (PI / 2.0f) / GEAR_RATIO);
     near(e.theta_e, PI / 2.0f - ENCODER_OFFSET);
     sample(&e, 8192U);
-    near(e.angle_after_gear, 0.0f);
+    near(e.mechanical_angle, (PI / 2.0f) / GEAR_RATIO);
 
     // Forward and reverse crossing must remain continuous at the gear output.
     encoder_init(&e);
     sample(&e, 32760U);
+    float angle_before_crossing = e.mechanical_angle;
     sample(&e, 8U);
     assert(e.turn_count == 1);
-    near(e.angle_after_gear, 16.0f * TWO_PI / ENCODER_CPR / GEAR_RATIO);
+    near(e.mechanical_angle - angle_before_crossing,
+         16.0f * TWO_PI / ENCODER_CPR / GEAR_RATIO);
     sample(&e, 32760U);
     assert(e.turn_count == 0);
-    near(e.angle_after_gear, 0.0f);
+    near(e.mechanical_angle, 32760.0f * TWO_PI / ENCODER_CPR / GEAR_RATIO);
     encoder_init(&e);
     sample(&e, 8U);
+    angle_before_crossing = e.mechanical_angle;
     sample(&e, 32760U);
     assert(e.turn_count == -1);
-    near(e.angle_after_gear, -16.0f * TWO_PI / ENCODER_CPR / GEAR_RATIO);
+    near(e.mechanical_angle - angle_before_crossing,
+         -16.0f * TWO_PI / ENCODER_CPR / GEAR_RATIO);
 
     // Exercise every raw code and two complete turns.
     encoder_init(&e);
@@ -121,7 +125,7 @@ int main(void)
         sample(&e, (uint16_t)(i % ENCODER_CPR));
         assert(e.theta_m >= 0.0f && e.theta_m < TWO_PI);
         assert(e.theta_e >= 0.0f && e.theta_e < TWO_PI);
-        near(e.angle_after_gear, (float)i * TWO_PI / ENCODER_CPR / GEAR_RATIO);
+        near(e.mechanical_angle, (float)i * TWO_PI / ENCODER_CPR / GEAR_RATIO);
     }
     assert(e.turn_count == 2);
     e.offset_encoder = -4.0f * TWO_PI - PI;
@@ -139,7 +143,7 @@ int main(void)
     assert(!e.success && e.crc_fault && e.cnt_fault == 1U);
     near(e.theta_m, previous.theta_m);
     near(e.theta_e, previous.theta_e);
-    near(e.angle_after_gear, previous.angle_after_gear);
+    near(e.mechanical_angle, previous.mechanical_angle);
     near(e.angle_delta_sum, previous.angle_delta_sum);
     for (uint8_t status = 1U; status <= 4U; status <<= 1) {
         frame(&e, 1000U, status);

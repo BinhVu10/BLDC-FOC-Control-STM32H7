@@ -65,6 +65,7 @@ bool run_calib_encoder(foc_t *foc, encoder_t *encoder, uint8_t cycle_count){
 
 		// GỬI LỆNH ĐỌC ENCODER ĐỂ LẤY OFFSET
 		if (encoder_Read_Polling(encoder) != HAL_OK) {
+
 			goto calib_done;
 		}
 
@@ -99,13 +100,17 @@ bool run_calib_encoder(foc_t *foc, encoder_t *encoder, uint8_t cycle_count){
 
 		// GỬI LỆNH ĐỌC ENCODER ĐỂ LẤY OFFSET
 		if (encoder_Read_Polling(encoder) != HAL_OK) {
+
 			goto calib_done;
+
 		}
 
 		angle2 = encoder->theta_m;
 
 		if(i == 0){
+
 			continue;
+
 		}
 
 		delta_angle = angle2 - angle1;
@@ -155,14 +160,17 @@ bool run_calib_encoder(foc_t *foc, encoder_t *encoder, uint8_t cycle_count){
 	}
 
 	encoder->offset_encoder = angle_offset_avg;
+
 	// DÙNG LẠI FRAME HỢP LỆ CUỐI ĐỂ TÍNH GÓC ĐIỆN VỚI OFFSET MỚI.
 	encoder_Read_Angle(encoder);
 	success = true;
 
 calib_done:
+
 	// KẾT THÚC CẢ KHI THÀNH CÔNG LẪN KHI LỖI; KHÔNG THAY ĐỔI STATE/MODE.
 	foc_zero_pwm_output(foc);
 
 	pwm_set(0U, 0U, 0U);
+
 	return success;
 }

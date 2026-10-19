@@ -5,6 +5,7 @@
 #ifndef HAND_MOTOR_CONTROL_FOC_H
 #define HAND_MOTOR_CONTROL_FOC_H
 
+#include <MotorApp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include "pid.h"
@@ -12,7 +13,6 @@
 #include "pwm_port.h"
 #include "stm32h7xx_hal.h"
 #include "config.h"
-#include "app_state.h"
 
 
 typedef struct {
@@ -46,6 +46,10 @@ typedef struct {
     float duty_b;												// DUTY CYCLE CẤP CHO PHA B
 
     float duty_c;												// DUTY CYCLE CẤP CHO PHA C
+
+    float offset_current_a;										// OFFSET DÒNG PHA A
+
+    float offset_current_b;										// OFFSET DÒNG PHA B
 
     float v_bus;												// ĐIỆN ÁP BUS
 

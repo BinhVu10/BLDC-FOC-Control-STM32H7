@@ -31,10 +31,15 @@ float pi_update(pi_t *pi, float setpoint, float feedback)
     integral_temp = pi->ki * pi->error * pi->ts;
 
     if (pi->ki == 0.0f) {
+
         pi->integral = 0.0f;
+
     }
+
     else {
+
         pi->integral = pi->integral + integral_temp;
+
     }
 
     pi->output = kp_term + pi->integral;
@@ -46,7 +51,9 @@ float pi_update(pi_t *pi, float setpoint, float feedback)
 void pi_anti_windup(pi_t *pi, float output_limited, float aw_gain)
 {
     if (pi->ki != 0.0f) {
+
         pi->integral += aw_gain * (output_limited - pi->output);
+
     }
 }
 
@@ -57,4 +64,5 @@ void pi_reset(pi_t *pi)
     pi->output = 0.0f;
 
     pi->error = 0.0f;
+
 }

@@ -59,10 +59,12 @@ void svpwm(float v_alpha, float v_beta, float v_bus, float *duty_a, float *duty_
 	    if (v_alpha >= 0.0f) {
 
 	        sector = (-ONE_BY_SQRT3 * v_beta > v_alpha) ? 5 : 6;
+
 	    }
 	    else {
 
 	        sector = (ONE_BY_SQRT3 * v_beta > v_alpha) ? 4 : 5;
+
 	    }
 	}
 
@@ -85,7 +87,7 @@ void svpwm(float v_alpha, float v_beta, float v_bus, float *duty_a, float *duty_
 
 			*duty_b = t2 + t0h;
 
-			*duty_c =t0h;
+			*duty_c =  t0h;
 
 			break;
 

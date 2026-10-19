@@ -71,7 +71,7 @@ int main(void)
     near(f.pi_id.ts, 0.00005f);
     near(f.pi_speed.ts, 0.001f);
     near(f.pi_pos.ts, 0.01f);
-    near(f.current_limit_max, 3.0f);
+    near(f.current_limit_max, CURRENT_MAX);
 
     e.theta_e = 1.0f;
     f.ia_fb = 0.2f;
@@ -95,10 +95,10 @@ int main(void)
     float previous_speed_error = 0.0f;
     float previous_pos_error = 0.0f;
     for (unsigned tick = 1; tick <= 400U; ++tick) {
-        e.angle_after_gear = (float)tick * 0.0001f;
+        e.mechanical_angle = (float)tick * 0.0001f;
         e.speed_filter_after_gear = (float)tick * 0.001f;
         foc_ctrl_pos_run(&f, &e, 0.1f);
-        if (tick % POS_DIV == 0U) previous_pos_error = 0.1f - e.angle_after_gear;
+        if (tick % POS_DIV == 0U) previous_pos_error = 0.1f - e.mechanical_angle;
         if (tick % SPEED_DIV == 0U)
             previous_speed_error = f.omega_ref_rpm - e.speed_filter_after_gear;
         near(f.pi_pos.error, previous_pos_error);

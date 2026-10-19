@@ -26,8 +26,7 @@ void foc_init(foc_t *foc){
 	// LIMIT ĐIỆN ÁP
 	foc->voltage_limit_max = foc->v_bus * ONE_BY_SQRT3;
 
-	foc->current_limit_max = 3.0f;
-
+	foc->current_limit_max = CURRENT_MAX;									// GIÁ TRỊ SATURATION BỘ DÒNG
 
 	// KHỞI TẠO THAM SỐ BỘ ĐIỀU KHIỂN
 	pi_init(&foc->pi_id, KP_Id, KI_Id, FOC_TS);
@@ -135,10 +134,10 @@ void foc_ctrl_pos_run(foc_t *foc, const encoder_t *encoder, float pos_ref_rad){
 
 	if (foc->pos_cnt >= POS_DIV) {
 
-		foc->omega_ref_rpm = pi_update(&foc->pi_pos, pos_ref_rad, encoder->angle_after_gear);
+		foc->omega_ref_rpm = pi_update(&foc->pi_pos, pos_ref_rad, encoder->mechanical_angle);
 
 		// GIỚI HẠN VẬN TỐC ĐẦU RA BỘ VỊ TRÍ
-		foc->omega_ref_rpm = CONSTRAIN(foc->omega_ref_rpm,-SPEED_LIMIT, SPEED_LIMIT);
+		foc->omega_ref_rpm = CONSTRAIN(foc->omega_ref_rpm, -SPEED_LIMIT, SPEED_LIMIT);
 
 		foc->pos_cnt = 0U;
 	}
@@ -161,11 +160,15 @@ void foc_open_loop_control(foc_t *foc, float vd, float vq, float theta_e){
 
 	foc_voltage_limit_dq(foc, &vd, &vq);
 
+	foc->vd = vd;
+
+	foc->vq = vq;
+
 	sin_theta = arm_sin_f32(theta_e);
 
 	cos_theta = arm_cos_f32(theta_e);
 
-	inverse_park_transform(vd, vq, sin_theta, cos_theta, &foc->v_alpha, &foc->v_beta);
+	inverse_park_transform(foc->vd, foc->vq, sin_theta, cos_theta, &foc->v_alpha, &foc->v_beta);
 
 	svpwm(foc->v_alpha, foc->v_beta, foc->v_bus, &foc->duty_a, &foc->duty_b, &foc->duty_c);
 
@@ -242,7 +245,7 @@ void foc_current_limit_dq(foc_t *foc, float *id, float *iq){
 
 		current_magnitude = sqrtf(current_square);
 
-		scale = foc->current_limit_max / current_magnitude;
+		scale = foc->current_limit_max / current_magnitude;						// GIỚI HẠN SQRT(ID^2+IDQ^2)
 
 		*id *= scale;
 
