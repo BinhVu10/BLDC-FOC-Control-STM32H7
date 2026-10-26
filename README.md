@@ -1,8 +1,8 @@
 # BLDC/PMSM FOC Control on STM32H743
 
-Firmware điều khiển một động cơ BLDC/PMSM bằng Field-Oriented Control (FOC) trên STM32H743VIH6. Project hiện đã có các vòng điều khiển dòng, tốc độ và vị trí chạy theo ngắt ADC đồng bộ PWM, startup state machine, homing, chuyển control mode cơ bản và telemetry UART phục vụ tuning; bước phát triển tiếp theo là `SYS_FAULT`, các cơ chế bảo vệ và truyền thông với master.
+Firmware điều khiển một động cơ BLDC/PMSM bằng Field-Oriented Control (FOC) trên STM32H743VIH6. Project hiện đã có các vòng điều khiển dòng, tốc độ và vị trí chạy theo ngắt ADC đồng bộ PWM, startup state machine có tự động calibration encoder và homing, chuyển control mode cơ bản, cùng telemetry UART phục vụ tuning. ADRC và PID tổng quát đã có mã nền nhưng chưa tham gia control runtime; bước phát triển tiếp theo là hoàn thiện `SYS_FAULT`, các cơ chế bảo vệ và truyền thông với master.
 
-> Trạng thái tài liệu: đối chiếu với source ngày 2026-10-19. Source hiện tại là căn cứ cuối cùng nếu README và code khác nhau.
+> Trạng thái tài liệu: đối chiếu với source ngày 2026-10-27. Source hiện tại là căn cứ cuối cùng nếu README và code khác nhau.
 
 ## 1. Mục tiêu và ý nghĩa
 
@@ -29,7 +29,7 @@ Repository này mới tập trung vào firmware của một slave STM32 điều 
 
 - Clarke, Park, Clarke-Park và inverse Park transform.
 - SVPWM sáu sector, duty được giới hạn trong `[0, 1]`.
-- PI controller và anti-windup back-calculation.
+- PI controller đang dùng trong cascade control; PID tổng quát và LADRC đã có API riêng.
 - Vòng dòng `Id/Iq` ở 20 kHz.
 - Vòng tốc độ ở 1 kHz, sinh dòng `Iq` đặt.
 - Vòng vị trí ở 100 Hz, sinh tốc độ đặt.
@@ -39,19 +39,21 @@ Repository này mới tập trung vào firmware của một slave STM32 điều 
 - Đọc encoder MT6826S qua SPI3 DMA trong lúc control.
 - CRC/status validation, góc cơ, góc điện, multi-turn, góc và tốc độ sau hộp số.
 - Calibration offset dòng lúc khởi động.
-- API calibration offset encoder bằng SPI polling.
+- Tự động calibration offset encoder bằng SPI polling trong startup.
 - State machine `SYS_IDLE -> SYS_START_UP -> SYS_READY -> SYS_RUNNING`.
-- Startup theo stage: power-up, current offset, chờ encoder, homing và hoàn tất.
+- Startup theo stage: power-up, current offset, chờ encoder, auto-calibration, homing và hoàn tất.
 - Homing cơ khí bằng current control và xác nhận hard stop theo vận tốc.
 - Runtime dispatcher cho current, speed và position mode.
 - Open-loop voltage mode với reference `Vd`, `Vq`, `theta_e`.
 - Quy trình dừng control, reset controller và khởi tạo reference khi đổi mode.
-- Logger nhị phân UART8 dùng DMA, phát 10 kênh telemetry ở 100 Hz.
+- Logger nhị phân UART8 dùng DMA, phát 15 kênh telemetry ở 100 Hz.
 - Host tests cho encoder, FOC và calibration.
 
 ### Đã có khung nhưng chưa tích hợp hoàn chỉnh
 
-- API `run_calib_encoder()` đã hoàn thiện độc lập nhưng lệnh gọi trong startup đang comment.
+- LADRC đã được khởi tạo/reset theo state nhưng lời gọi điều khiển trong speed mode đang comment; speed loop vẫn dùng PI.
+- PID tổng quát đã có implementation nhưng chưa có call site trong application/control flow.
+- `sys_error_t` đã khai báo các nhóm lỗi dự kiến nhưng chưa được tạo instance hoặc nối vào fault flow.
 - `drv_fault()` đã đọc được chân `nFAULT`, nhưng chưa có fault-handling flow.
 - `CALIB_ENCODER_MODE` và `MIT_CTRL_MODE` đã được khai báo nhưng chưa có runtime implementation.
 - `SYS_FAULT` đã được khai báo nhưng chưa có logic xử lý và recovery.
@@ -65,7 +67,7 @@ Repository này mới tập trung vào firmware của một slave STM32 điều 
 
 ### Firmware đang chạy ở chế độ nào?
 
-Firmware khởi tạo tại `SYS_IDLE` với `start_req = 1`, nên tự chuyển qua startup. Sau current-offset, frame encoder đầu tiên và homing, hệ thống dừng tại `SYS_READY` vì `run_req` mặc định bằng `0`. Khi có `run_req`, `ctrl_mode` được lấy từ `user_command.user_cmd_mode`; mặc định hiện tại là position mode. Current, speed, position và open-loop voltage được dispatch trong ADC ISR. Calibration/MIT mode chưa triển khai nên đưa FOC về off.
+Firmware khởi tạo tại `SYS_IDLE` với `start_req = 1`, nên tự chuyển qua startup. Sau current-offset, frame encoder đầu tiên, auto-calibration và homing, hệ thống dừng tại `SYS_READY` vì `run_req` mặc định bằng `0`. Calibration thất bại sẽ disable driver và chuyển sang `SYS_FAULT`. Khi có `run_req`, `ctrl_mode` được lấy từ `user_command.user_cmd_mode`; mặc định hiện tại là position mode. Current, speed, position và open-loop voltage được dispatch trong ADC ISR. `CALIB_ENCODER_MODE` và `MIT_CTRL_MODE` chưa có runtime implementation nên đưa FOC về off.
 
 ## 3. Phần cứng và phạm vi
 
@@ -78,7 +80,7 @@ Firmware khởi tạo tại `SYS_IDLE` với `start_req = 1`, nên tự chuyển
 | Điện áp bus | ADC3 qua mạch chia áp |
 | PWM | TIM1 center-aligned, 20 kHz |
 | Control | Current 20 kHz, speed 1 kHz, position 100 Hz |
-| Telemetry | UART8 TX DMA, 921600 baud, 100 Hz |
+| Telemetry | UART8 TX DMA, 1,000,000 baud, 100 Hz |
 | Motor profile | Chọn bằng `MOTOR_TYPE` trong `Config/config.h` |
 | Gear ratio | `29` với `MOTOR_TYPE = 0` hiện tại |
 | Pole pairs | `1` với `MOTOR_TYPE = 0` hiện tại |
@@ -89,10 +91,10 @@ Các profile hiện có:
 
 | `MOTOR_TYPE` | Cơ cấu | Gear | Pole pairs | `CURRENT_MAX` | `CURRENT_GAIN` | `SPEED_LIMIT` | Hành trình cấu hình |
 |---:|---|---:|---:|---:|---:|---:|---|
-| `0` | Motor chưa lắp cơ khí | 29 | 1 | 5.0 A | 0.25 V/A | 18000 RPM | Gần như không giới hạn |
+| `0` | Motor chưa lắp cơ khí | 29 | 1 | 5.0 A | 0.5 V/A | 18000 RPM | Gần như không giới hạn |
 | `1` | Ngón cái | 560 | 2 | 2.5 A | 0.5 V/A | 40 RPM | -115° đến -5° |
 | `2` | Đầu ngón cái | 560 | 2 | 2.5 A | 0.5 V/A | 40 RPM | 5° đến 55° |
-| `3` | Các ngón còn lại | 580 | 1 | 5.0 A | 0.25 V/A | 30 RPM | 5° đến 115° |
+| `3` | Các ngón còn lại | 580 | 1 | 5.0 A | 0.5 V/A | 30 RPM | 5° đến 115° |
 
 Homing bơm dòng dương cho type `1`, dòng âm cho các type còn lại. `MOTOR_TYPE` là macro compile-time; đổi profile cần build và kiểm tra lại đúng motor/board trước khi chạy.
 
@@ -105,8 +107,10 @@ Application coordination (hiện chủ yếu nằm trong main.c)
         |
         +-- FOC + cascaded controllers
         |      +-- position PI
-        |      +-- speed PI
+        |      +-- speed PI (đang chạy)
         |      +-- current Id/Iq PI
+        |      +-- LADRC speed controller (thử nghiệm, chưa active)
+        |      +-- generic PID (đã có API, chưa tích hợp)
         |      +-- transforms + SVPWM
         |
         +-- sensors and calibration
@@ -157,7 +161,7 @@ Platform/
 
 lib/
   FOC/                       Control loops, transforms và SVPWM
-  Controller/                PI controller và anti-windup
+  Controller/                PI đang dùng; generic PID và LADRC thử nghiệm
   Sensors/Current Sensor/    Current offset và ADC-to-current conversion
   Sensors/Encorder/          Driver encoder MT6826S
   Calib/                     Calibration offset encoder
@@ -187,6 +191,10 @@ Reset
        -> ADC ISR tích lũy 4096 mẫu offset dòng
   -> WAIT_ENCODER
        -> chờ frame encoder hợp lệ đầu tiên
+  -> AUTO_CALIB
+       -> dừng FOC và chờ giao dịch encoder DMA kết thúc
+       -> chạy encoder calibration bằng SPI polling, 3 chu kỳ
+       -> lỗi: PWM off, disable driver, chuyển SYS_FAULT
   -> HOMING
        -> chạy current control với Iq = CURRENT_HOME
        -> xác nhận hard stop bằng speed deadband và thời gian giữ
@@ -207,6 +215,7 @@ TIM1 center-aligned carrier
        -> nếu chưa xong current offset: tích lũy mẫu offset rồi return
        -> đọc Vbus
        -> đọc Ia, Ib; tính Ic
+       -> nếu đang AUTO_CALIB: return để polling calibration sở hữu PWM/SPI
        -> cập nhật tốc độ từ tổng delta góc
        -> yêu cầu frame encoder SPI DMA mới
        -> SYS_RUNNING: dispatch position/speed/current/open-loop voltage mode
@@ -251,6 +260,8 @@ speed reference [RPM after gear]
 
 `Id` được đặt bằng `0` trong speed mode hiện tại.
 
+`LADRC_t` hiện dùng ESO tuyến tính bậc hai và đã được init/reset cùng state machine, nhưng block gọi `ladrc_update()` trong speed mode đang comment. Vì vậy đường điều khiển runtime chính thức vẫn là PI; LADRC mới là nền thử nghiệm cần kiểm chứng và tune trên phần cứng trước khi kích hoạt.
+
 ### Vòng dòng và điều chế
 
 ```text
@@ -289,10 +300,10 @@ Nếu `v_bus <= 0`, `foc_current_ctrl_run()` gọi `foc_off()` để đưa PWM v
 
 ### TIM7 và UART telemetry
 
-- TIM7 clock: 200 MHz, prescaler `1999`, ARR `999`.
-- Tần số callback telemetry: `200 MHz / (2000 * 1000) = 100 Hz`.
+- TIM7 clock: 200 MHz, prescaler `999`, ARR `1999`.
+- Tần số callback telemetry: `200 MHz / (1000 * 2000) = 100 Hz`.
 - TIM7 IRQ priority `5`; UART8 và DMA1 Stream3 IRQ priority `7`, thấp hơn luồng control.
-- UART8 chạy TX-only ở `921600 baud`, `8N1`, không flow control.
+- UART8 chạy TX-only ở `1,000,000 baud`, `8N1`, không flow control.
 
 ### Nhịp các vòng
 
@@ -326,7 +337,7 @@ Mapping này bám theo PCB hiện tại; không tự đổi thứ tự pha nếu
 | Driver `nFault` | PB11 | Active low |
 | Encoder SCK/MISO/MOSI | PB3/PB4/PB5 | SPI3 |
 | Encoder CS | PC11 | Software-controlled, active low |
-| Telemetry UART8 TX | PE1 | DMA1 Stream3, 921600 baud |
+| Telemetry UART8 TX | PE1 | DMA1 Stream3, 1,000,000 baud |
 | UART8 RX pin | PE0 | Được CubeMX cấu hình pin nhưng UART hiện chạy TX-only |
 
 SPI3 là master full-duplex, 8 bit, MSB first, mode 3, nguồn clock 160 MHz, prescaler 16, tốc độ khoảng 10 Mbit/s. DMA1 Stream0/Stream1 và SPI3 IRQ có priority `0`; ADC IRQ có priority `1`.
@@ -354,9 +365,9 @@ Module `lib/Log Data/uart_logger.*` phục vụ quan sát và tuning, độc l�
 
 ```text
 SOF 0xA5 0x5A
-  + 10 x float32 payload
+  + 15 x float32 little-endian payload
   + CRC16-CCITT-FALSE
-= 44 byte/frame
+= 64 byte/frame
 ```
 
 - CRC tính trên SOF và payload; hai byte CRC truyền theo thứ tự low byte trước.
@@ -364,20 +375,27 @@ SOF 0xA5 0x5A
 - Nếu UART DMA trước chưa hoàn tất, `UART_Log_Send()` trả `HAL_BUSY` và mẫu mới không được gửi.
 - Kênh không có reference phù hợp với mode hiện hành được gán `NaN`.
 
-Thứ tự 10 kênh cố định:
+Thứ tự 15 kênh cố định:
 
 | Index | Channel | Đơn vị/ý nghĩa |
 |---:|---|---|
-| 1 | `LOG_IQ` | `Iq` feedback, A |
-| 2 | `LOG_IQ_REF` | `Iq` reference đang áp dụng, A |
-| 3 | `LOG_VQ` | `Vq` sau giới hạn, V |
-| 4 | `LOG_SPEED` | Tốc độ sau gear đã lọc, RPM |
-| 5 | `LOG_POSITION` | Góc cơ khí sau gear, degree |
-| 6 | `LOG_SPEED_REF` | Speed reference đang áp dụng, RPM |
-| 7 | `LOG_POSITION_REF` | Position command, degree |
-| 8 | `LOG_VD` | `Vd` sau giới hạn, V |
-| 9 | `LOG_ID` | `Id` feedback, A |
-| 10 | `LOG_ID_REF` | `Id` reference đang áp dụng, A |
+| 0 | `LOG_IQ` | `Iq` feedback, A |
+| 1 | `LOG_IQ_REF` | `Iq` reference đang áp dụng, A |
+| 2 | `LOG_ID` | `Id` feedback, A |
+| 3 | `LOG_ID_REF` | `Id` reference đang áp dụng, A |
+| 4 | `LOG_VD` | `Vd` sau giới hạn, V |
+| 5 | `LOG_VQ` | `Vq` sau giới hạn, V |
+| 6 | `LOG_V_BUS` | Điện áp DC bus, V |
+| 7 | `LOG_SPEED` | Tốc độ sau gear đã lọc, RPM |
+| 8 | `LOG_SPEED_REF` | Speed reference đang áp dụng, RPM |
+| 9 | `LOG_POSITION` | Góc cơ khí sau gear, degree |
+| 10 | `LOG_POSITION_REF` | Position command, degree |
+| 11 | `LOG_TEMPERATURE` | Dự phòng nhiệt độ; hiện là `NaN` |
+| 12 | `LOG_SYS_STAGE` | Giá trị `sys_state` hiện tại |
+| 13 | `LOG_BOOT_STAGE` | Dự phòng startup stage; hiện luôn bằng `0` |
+| 14 | `LOG_CONTROL_MODE` | Dự phòng control mode; hiện là `NaN` |
+
+Ba kênh dự phòng ở trên đã có vị trí ổn định trên wire format nhưng chưa phản ánh đầy đủ runtime. Decoder phía PC phải dùng đúng frame 64 byte và thứ tự index 0..14; decoder 44 byte cũ không còn tương thích.
 
 ## 13. Calibration
 
@@ -390,22 +408,23 @@ Thứ tự 10 kênh cố định:
 
 ### Offset encoder
 
-API: `run_calib_encoder(foc, encoder, CALIB_CYCLE)` trong `lib/Calib`.
+API: `run_calib_encoder(foc, encoder, CALIB_CYCLE)` trong `lib/Calib`; startup hiện gọi API này tự động ở stage `AUTO_CALIB`.
 
 ```text
 B (+120 electrical degree) -> A (0 degree) -> đọc angle1
 C (-120 electrical degree) -> A (0 degree) -> đọc angle2
 ```
 
-- Gọi ngoài ISR và yêu cầu `cycle_count >= 2`.
+- Gọi ngoài ISR và yêu cầu `cycle_count >= 2`; cấu hình hiện tại dùng `CALIB_CYCLE = 3`.
+- Điện áp align gốc hiện là `VD_CALIB = 4 V`.
 - Điện áp align giảm theo `VD_CALIB`, `VD_CALIB/2`, `VD_CALIB/4`.
 - Bỏ chu kỳ đầu để ổn định; các chu kỳ còn lại được unwrap và tính trung bình online.
 - Dùng `encoder_Read_Polling()`, không dùng DMA trong calibration.
 - Chỉ ghi offset mới khi toàn bộ quá trình thành công.
 - Khi kết thúc, PWM được đưa về 0 cả khi thành công lẫn lỗi.
-- Offset mới chỉ nằm trong RAM.
+- Offset mới chỉ nằm trong RAM và chưa được lưu non-volatile.
 
-API không tự chuyển mode, dừng control hay chờ giao dịch DMA. Phần application/state machine phải đảm bảo không còn control/DMA đang chạy trước khi gọi, rồi reset các state cần thiết trước khi quay lại closed-loop control.
+API không tự chuyển mode, dừng control hay chờ giao dịch DMA. `main.c` đang đảm nhiệm phần phối hợp: tắt FOC, chờ tối đa 10 ms để DMA encoder kết thúc, dành PWM/SPI cho polling calibration, rồi reset bộ tích lũy tốc độ trước khi homing. Nếu DMA vẫn bận hoặc calibration lỗi, firmware tắt PWM, disable driver và chuyển `SYS_FAULT`.
 
 ## 14. Quy ước dữ liệu
 
@@ -440,7 +459,7 @@ Giá trị hiện tại với `MOTOR_TYPE = 0` trong `Config/config.h`:
 
 - `ADC_MAX = 65535` (16 bit).
 - `ADC_VREF = 3.3 V`.
-- `CURRENT_GAIN = 0.25 V/A`.
+- `CURRENT_GAIN = 0.5 V/A`.
 - `VBUS_DIV_GAIN = 5.7`.
 - `CURRENT_RATED = 2.0 A`.
 - `CURRENT_MAX = 5.0 A`; `foc_init()` dùng giá trị này làm giới hạn vector dòng runtime.
@@ -460,7 +479,7 @@ SYS_IDLE -> SYS_START_UP -> SYS_READY -> SYS_RUNNING
                                       -> SYS_FAULT (chưa triển khai xử lý)
 
 Startup stage:
-POWER_UP -> CURRENT_OFFSET -> WAIT_ENCODER -> HOMING -> START_UP_DONE
+POWER_UP -> CURRENT_OFFSET -> WAIT_ENCODER -> AUTO_CALIB -> HOMING -> START_UP_DONE
 
 Control mode:
 CALIB_ENCODER_MODE
@@ -475,7 +494,8 @@ Phần đã triển khai:
 
 1. **Startup và system state cơ bản**
    - Tự đi từ `SYS_IDLE` qua startup tới `SYS_READY` khi có `start_req`.
-   - Current offset, chờ encoder và homing là các startup stage riêng.
+   - Current offset, chờ encoder, auto-calibration và homing là các startup stage riêng.
+   - Auto-calibration lỗi chuyển sang `SYS_FAULT`, nhưng fault handling/recovery tổng quát chưa có.
    - `run_req` chuyển từ ready sang running; `stop_req` đưa running về ready.
 
 2. **Control-mode transition**
@@ -484,8 +504,12 @@ Phần đã triển khai:
    - Position reference bắt đầu tại vị trí hiện tại; speed/current reference được đưa về zero.
 
 3. **Telemetry phục vụ tuning**
-   - TIM7 lấy mẫu 100 Hz và UART8 phát frame nhị phân bằng DMA.
+   - TIM7 lấy mẫu 100 Hz và UART8 phát frame 15 kênh/64 byte bằng DMA ở 1 Mbaud.
    - Feedback và reference được chọn theo mode; đây chưa phải command/feedback protocol với master.
+
+4. **Controller thử nghiệm**
+   - Generic PID có derivative filter, saturation và anti-windup nhưng chưa được gọi.
+   - LADRC speed controller có ESO bậc hai và được init/reset, nhưng chưa active trong speed loop.
 
 Phần phát triển tiếp theo:
 
@@ -495,7 +519,8 @@ Phần phát triển tiếp theo:
    - Xác định fault latch, fault code và điều kiện clear/restart.
 
 2. **Các mode còn lại**
-   - Tích hợp encoder calibration vào transition an toàn giữa DMA và polling.
+   - Quyết định có dùng LADRC hay tiếp tục PI, sau đó tune và kiểm thử trên đúng motor nếu kích hoạt LADRC.
+   - Hoàn thiện runtime command/transition cho `CALIB_ENCODER_MODE` nếu cần calibration theo yêu cầu ngoài startup.
    - Phát triển MIT control khi có yêu cầu cụ thể.
 
 3. **Communication**
@@ -532,7 +557,7 @@ Cần GCC trong `PATH`, sau đó chạy từ PowerShell:
 ./tests/calib/run.ps1
 ```
 
-Ba test suite đã pass khi README này được cập nhật ngày 2026-10-19. Nếu PowerShell chặn script chưa ký, có thể chạy bằng `pwsh -ExecutionPolicy Bypass -File <script>`. Các test dùng HAL giả lập để kiểm tra logic, không thay thế build STM32CubeIDE, đo timing trên board hoặc HIL test.
+Ba test suite đã pass khi README này được cập nhật ngày 2026-10-27. Nếu PowerShell chặn script chưa ký, có thể chạy bằng `pwsh -ExecutionPolicy Bypass -File <script>`. Các test dùng HAL giả lập để kiểm tra logic, không thay thế build STM32CubeIDE, đo timing trên board hoặc HIL test.
 
 ## 17. Hướng dẫn cho developer và coding agent
 
@@ -556,10 +581,10 @@ Khi phát triển:
 
 ## 18. Known limitations và rủi ro kỹ thuật
 
-- Encoder calibration chưa được nối vào startup/mode flow.
-- Chưa có cơ chế dừng yêu cầu DMA mới và chờ DMA hoàn tất khi chuyển sang polling calibration.
+- Auto-calibration đã có startup flow nhưng vẫn là tác vụ blocking ngoài ISR; chưa có timeout tổng cho toàn bộ quá trình align/calibration.
 - `CALIB_ENCODER_MODE` và `MIT_CTRL_MODE` hiện đưa FOC về off vì chưa có implementation.
 - `SYS_FAULT` chưa có fault entry, latch, clear hoặc recovery flow.
+- `sys_error_t` mới chỉ là khai báo dữ liệu; chưa có instance và chưa nối với `SYS_FAULT`.
 - `nFAULT` và NTC chưa tham gia quyết định dừng motor.
 - Chưa có encoder timeout; frame lỗi chỉ tăng counter và giữ góc cũ.
 - Startup/homing chưa có timeout tổng hoặc điều kiện abort sang fault.
@@ -569,6 +594,10 @@ Khi phát triển:
 - `CURRENT_LIMIT_FACTOR` chưa được dùng để tính giới hạn runtime; giới hạn vector dòng lấy trực tiếp từ `CURRENT_MAX`.
 - `MOTOR_TYPE = 0` vẫn chạy homing với dòng âm dù profile được mô tả là motor không lắp cơ khí; cần xác minh trước khi cấp công suất.
 - UART telemetry là một chiều, không có command parser, sequence number hoặc cơ chế backpressure ngoài việc bỏ mẫu khi DMA bận.
+- `LOG_TEMPERATURE` và `LOG_CONTROL_MODE` chưa được cập nhật nên vẫn là `NaN`; `LOG_BOOT_STAGE` hiện hard-code bằng `0` thay vì `start_up_stage`.
+- Generic PID chưa có call site; LADRC chưa active vì `ladrc_update()` vẫn đang comment trong speed mode.
+- `Hand_motor_control.ioc` vẫn giữ UART8 `921600 baud` và TIM7 `PSC=1999`, `ARR=999`, trong khi generated source đang dùng 1 Mbaud và `PSC=999`, `ARR=1999`. Hai cấu hình TIM7 đều cho 100 Hz, nhưng cần đồng bộ `.ioc` trước lần generate code kế tiếp để tránh ghi đè source.
+- Profile `MOTOR_TYPE = 3` hiện không có `ENCODER_OFFSET` active; đổi sang profile này sẽ cần bổ sung/xác nhận offset trước khi build và chạy.
 - Encoder offset chưa lưu non-volatile.
 - Gain controller cần tune và xác nhận lại trên hệ thật.
 - Timing/jitter ADC–SPI DMA–FOC chưa được characterise đầy đủ trên board.

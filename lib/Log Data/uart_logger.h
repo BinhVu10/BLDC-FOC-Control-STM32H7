@@ -4,54 +4,47 @@
 #include "stm32h7xx_hal.h"
 #include <stdint.h>
 
-/* Fixed channel order: must match CHANNEL_NAMES in the Python app.
- * Previous seven slots are preserved; the new slots are appended. No temperature channel yet.
+/* UART wire order: 15 IEEE-754 float32 fields, little-endian.
+ * Keep strictly synchronized with CHANNEL_NAMES in uart_logger_15float.py.
+ * Any future field is appended to this enum; ALL fields remain float32.
  */
 typedef enum
 {
-    LOG_IQ = 0,          /* Channel 1: measured Iq (A) */
-
-    LOG_IQ_REF,          /* Channel 2: active Iq reference (A) */
-
-    LOG_VQ,              /* Channel 3: commanded Vq (V) */
-
-    LOG_SPEED,           /* Channel 4: measured speed */
-
-    LOG_POSITION,        /* Channel 5: measured position */
-
-    LOG_SPEED_REF,       /* Channel 6: active speed reference */
-
-    LOG_POSITION_REF,    /* Channel 7: active position reference */
-
-    LOG_VD,              /* Channel 8: commanded Vd (V) */
-
-    LOG_ID,              /* Channel 9: measured Id (A) */
-
-    LOG_ID_REF,          /* Channel 10: active Id reference (A) */
-
-    UART_LOG_N           /* Always the number of channels = 10 */
-
+    LOG_IQ = 0,          /*  0 feedback Iq [A] */
+    LOG_IQ_REF,          /*  1 reference Iq [A] */
+    LOG_ID,              /*  2 feedback Id [A] */
+    LOG_ID_REF,          /*  3 reference Id [A] */
+    LOG_VD,              /*  4 commanded Vd [V] */
+    LOG_VQ,              /*  5 commanded Vq [V] */
+    LOG_V_BUS,           /*  6 DC bus [V] */
+    LOG_SPEED,           /*  7 speed feedback */
+    LOG_SPEED_REF,       /*  8 speed reference */
+    LOG_POSITION,        /*  9 position feedback */
+    LOG_POSITION_REF,    /* 10 position reference */
+    LOG_TEMPERATURE,     /* 11 temperature / extra debug float */
+    LOG_SYS_STAGE,       /* 12 system state encoded as float */
+    LOG_BOOT_STAGE,      /* 13 boot stage encoded as float */
+    LOG_CONTROL_MODE,    /* 14 control mode encoded as float */
+    UART_LOG_N           /* Number of float32 slots: 15 */
 } UART_LogChannel_t;
 
-/* 2-byte SOF + UART_LOG_N IEEE-754 float32 + 2-byte CRC16 (little-endian).
- * Frame length is 44 bytes for ten channels.
- */
+#define LOG_TEMPORARY LOG_TEMPERATURE
+
+/* SOF 2 bytes + 15*4-byte float32 + CRC16 2 bytes = 64 bytes. */
 typedef struct __attribute__((packed))
 {
     uint8_t sof[2];
-
     float payload[UART_LOG_N];
-
     uint16_t crc;
-
 } UART_LogFrame_t;
 
-/* Call every sample before assigning selected channels: unused fields -> NaN. */
+/* Set all slots to NaN before assigning this frame's selected channels. */
 void UART_Log_Init(float data[UART_LOG_N]);
 
-/* Non-blocking UART DMA TX. The caller's data[] is copied before return.
- * Returns HAL_BUSY if the previous DMA transfer has not finished.
+/* Copies payload into an aligned internal UART DMA buffer, then transmits.
+ * HAL_BUSY means previous DMA transfer is not finished. No queueing.
  */
-HAL_StatusTypeDef UART_Log_Send(UART_HandleTypeDef *huart, const float data[UART_LOG_N]);
+HAL_StatusTypeDef UART_Log_Send(UART_HandleTypeDef *huart,
+                                const float data[UART_LOG_N]);
 
 #endif /* UART_LOGGER_H */

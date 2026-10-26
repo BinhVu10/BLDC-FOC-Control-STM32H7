@@ -54,14 +54,15 @@
 #define CURRENT_RATED                  2.0f            			// DÒNG ĐIỆN ĐỊNH MỨC CỦA ĐỘNG CƠ
 #define CURRENT_LIMIT_FACTOR           2.5f             		// HỆ SỐ GIỚI HẠN DÒNG
 #define POLE_PAIRS                     1.0f
-#define ENCODER_OFFSET               	4.60894108f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 3.1
+//#define ENCODER_OFFSET               	4.60894108f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 3.1
 //#define ENCODER_OFFSET               5.23159409f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 3.2
 //#define ENCODER_OFFSET               4.59657335f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 6.1
 //#define ENCODER_OFFSET               3.09240746f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 6.2
 //#define ENCODER_OFFSET               1.86234868f       		// ENCODER OFFSET CỦA ĐỘNG CƠ 6.3
 //#define ENCODER_OFFSET               5.00894213f      		// ENCODER OFFSET CỦA ĐỘNG CƠ 3.3
 //#define ENCODER_OFFSET                 0.684443116f      		// ENCODER OFFSET CỦA ĐỘNG CƠ OK
-#define CURRENT_GAIN                   0.25f
+
+#define CURRENT_GAIN                   0.5f
 #define VOLTAGE_LIMIT                  6.0f
 #define CURRENT_HOME                   1.0f             		// DÒNG HOMING
 #define HOMING_DRIVE_TIME_MS           1000U            		// THỜI GIAN BƠM DÒNG TRƯỚC KHI CHECK HARD STOP
@@ -76,14 +77,15 @@
 #define CURRENT_MAX                    5.0f
 #define CURRENT_RATED                  2.0f             		// DÒNG ĐIỆN ĐỊNH MỨC CỦA ĐỘNG CƠ
 #define CURRENT_LIMIT_FACTOR           2.5f             		// HỆ SỐ GIỚI HẠN DÒNG
-#define CURRENT_GAIN                   0.25f
+#define CURRENT_GAIN                   0.5f
 #define VOLTAGE_LIMIT                  6.0f
 #define CURRENT_HOME                   1.0f             		// DÒNG HOMING
 #define HOMING_DRIVE_TIME_MS           1000U            		// THỜI GIAN BƠM DÒNG TRƯỚC KHI CHECK HARD STOP
 #define HOMING_STALL_TIME_MS           200U             		// THỜI GIAN XÁC NHẬN VẬN TỐC NẰM TRONG DEADBAND
 #define HOMING_SPEED_DEADBAND_RPM      0.1f             		// DEADBAND VẬN TỐC SAU HỘP SỐ
 #define SPEED_LIMIT                    18000.0f          		// TỐC ĐỘ TỐI ĐA (ĐỂ CLAMP ĐẦU RA CỦA BỘ VỊ TRÍ)
-#define ENCODER_OFFSET                 0.684443116f      		// ENCODER OFFSET CỦA ĐỘNG CƠ ĐANG DÙNG
+//#define ENCODER_OFFSET                 0.684443116f      		// ENCODER OFFSET CỦA ĐỘNG CƠ ĐANG DÙNG
+#define ENCODER_OFFSET               1.86234868f       			// ENCODER OFFSET CỦA ĐỘNG CƠ 6.3
 #define ANGLE_MAX					   99999U					// KHÔNG CHẶN HÀNH TRÌNH
 #define ANGLE_MIN					  -99999.0f					// KHÔNG CHẶN HÀNH TRÌNH
 #endif
@@ -97,6 +99,8 @@
 /*
  * CONTROL CONFIGURATION
  * */
+#define SPEED_BW_HZ						100.0f											// BĂNG THÔNG VÒNG VẬN TỐC
+
 #define FOC_FREQ_HZ                    20000            								// TẦN SỐ VÒNG DÒNG (FOC), 20KHZ
 #define FOC_TS                         (1.0f/(float) FOC_FREQ_HZ)
 #define FOC_SPEED_LOOP_HZ              (FOC_FREQ_HZ / 20U) 						 		// TẦN SỐ VÒNG VẬN TỐC, 1KHZ
@@ -118,7 +122,7 @@
 //#define KI_SPEED                     150.0f
 #define KP_SPEED                       0.025f
 #define KI_SPEED                       2.5f
-#define SPEED_FILTER_ALPHA             0.93f
+#define SPEED_FILTER_ALPHA             0.85f
 #define AW_GAIN_SPEED                  0.15f
 
 // CONTROLLER PI POSITION
@@ -126,17 +130,31 @@
 #define KI_POS                         0.0f
 #define AW_GAIN_POS                    0.1f
 
+// ADRC SPEED CONTROLLER (SECOND ORDER)
+#define ADRC_TS						   FOC_SPEED_TS										// CHU KỲ ĐIỀU KHIỂN ADRC SPEED
+#define ESO_BW_HZ					   200.0f											// BĂNG THÔNG BẰNG 1.5 LẦN BĂNG THÔNG VÒNG VẬN TỐC
+#define ESO_BW						   TWO_PI*ESO_BW_HZ									// BĂNG THÔNG W_ESO
+#define ESO_L1						   30.0f											// GAIN L1 MIỀN LIÊN TỤC
+#define ESO_L2						   900.0f											// GAIN L2 MIỀN LIÊN TỤC
+#define ESO_L1_DISCRETE				   0.3140778341f									// GAIN L1 MIỀN RỜI RẠC
+#define ESO_L2_DISCRETE				   29.51380332f										// GAIN L2 MIỀN RỜI RẠC
+#define ADRC_B0					  	   150.0f										    // THAM SỐ ĐỐI TƯỢNG
+#define ADRC_KP						   TWO_PI*SPEED_BW_HZ								// GAIN BỘ ĐIỀU KHIỂN - CONTROL OUTPUT
+#define ADRC_KI						   0.0f												// GAIN BỘ ĐIỀU KHIỂN TÍCH PHÂN
+#define ADRC_AW						   0.20f											// ANTI-WINDUP TÍCH PHÂN
+
+
 /*
  * ADC CONFIGUARE
  * */
 #define ADC_VREF                       3.3f
-#define ADC_MAX                        65535.0f         							// 16 BIT
+#define ADC_MAX                        65535.0f         								// 16 BIT
 #define ADC_TO_CURRENT                 (ADC_VREF / (ADC_MAX * CURRENT_GAIN))
 #define OFFSET_SAMPLE_NUM              4096
-#define VBUS_DIV_GAIN                  5.7f            								// GAIN ĐIỆN ÁP TỪ MẠCH CHIA ÁP 47K/10K
+#define VBUS_DIV_GAIN                  5.7f            									// GAIN ĐIỆN ÁP TỪ MẠCH CHIA ÁP 47K/10K
 
 // HELPER PARAMETER
-#define CALIB_CYCLE                    5U
+#define CALIB_CYCLE                    3U
 
 #define PI                             3.14159265f
 #define TWO_PI                         6.283185307f
@@ -154,7 +172,7 @@
 #define DEG_TO_RAD(deg)                ((deg) * 0.017453292519943f)  				// PI/180
 #define RADS_TO_RPM                    9.54929659f
 
-#define VD_CALIB                       5.0f            								// ĐIỆN ÁP VD ĐỂ CALIB
+#define VD_CALIB                       4.0f            								// ĐIỆN ÁP VD ĐỂ CALIB
 #define VQ_CALIB                       0.0f
 
 #endif

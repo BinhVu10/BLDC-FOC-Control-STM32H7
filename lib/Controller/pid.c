@@ -66,3 +66,126 @@ void pi_reset(pi_t *pi)
     pi->error = 0.0f;
 
 }
+
+void pid_init(pid_t *pid, float kp, float ki, float kd, float kd_filter, float aw_gain, float output_max, float output_min, float ts){
+
+	pid->kp = kp;
+
+	pid->ki = ki;
+
+	pid->kd = kd;
+
+	if (kd_filter < 0.0f) {
+
+		pid->kd_filter = 0.0f;
+
+	}
+
+	else if (kd_filter > 1.0f) {
+
+		pid->kd_filter = 1.0f;
+
+	}
+
+	else {
+
+		pid->kd_filter = kd_filter;
+
+	}
+
+	pid->aw_gain = aw_gain;
+
+	pid->integral = 0.0f;
+
+	pid->derivative = 0.0f;
+
+	pid->output = 0.0f;
+
+	pid->error = 0.0f;
+
+	pid->output_max = output_max;
+
+	pid->output_min = output_min;
+
+	pid->ts = ts;
+
+}
+
+void pid_reset(pid_t *pid){
+
+	pid->error = 0.0f;
+
+	pid->integral = 0.0f;
+
+	pid->derivative = 0.0f;
+
+	pid->output = 0.0f;
+
+}
+
+float pid_run(pid_t *pid, float setpoint, float feedback){
+
+	float error = setpoint - feedback;
+
+	float kp_term = pid->kp * error;
+
+	if ((pid->ki != 0.0f) && (pid->ts > 0.0f)) {
+
+		pid->integral += pid->ki * error * pid->ts;
+
+	}
+
+	else {
+
+		pid->integral = 0.0f;
+
+	}
+
+    if ((pid->kd != 0.0f) && (pid->ts > 0.0f)) {
+
+		float derivative_term = pid->kd * (error - pid->error) / pid->ts;
+
+		pid->derivative = (1.0f - pid->kd_filter) * pid->derivative + pid->kd_filter * derivative_term;
+
+    }
+
+    else {
+
+		pid->derivative = 0.0f;
+    }
+
+	// CONTROL OUTPUT
+	float output = kp_term + pid->integral + pid->derivative;
+
+	// SATURATION OUTPUT
+
+	if(output > pid->output_max){
+
+		pid->output = pid->output_max;
+
+	}
+
+	else if(output < pid->output_min){
+
+		pid->output = pid->output_min;
+
+	}
+
+	else{
+
+		pid->output = output;
+	}
+
+
+	// BACK-CALCULATION ANTI-WINUP
+	if ((pid->ki != 0.0f) && (pid->ts > 0.0f)) {
+
+		pid->integral += pid->aw_gain* (pid->output - output);
+
+	}
+
+	pid->error = error;
+
+	return pid->output;
+
+}

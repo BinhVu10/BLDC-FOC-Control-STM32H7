@@ -72,6 +72,8 @@ typedef enum{
 
 	WAIT_ENCODER,										// WAIT FOR FIRST VALID ENCODER FRAME
 
+	AUTO_CALIB,											// AUTO CALIB ENCODER OFFSET
+
 	HOMING, 											// HOMING CƠ KHÍ
 
 	START_UP_DONE										// DONE START UP
@@ -93,11 +95,33 @@ typedef struct{
 
 	uint8_t current_offset_done;						// CỜ OFFSET DÒNG DONE
 
+	uint8_t calib_encoder_offet_done;					// CỜ OFFSET ENCODER DONE
+
 	uint8_t homing_done;								// CỜ HOMING DONE
 	
 	uint8_t clear_fault_done;							// CỜ CLEAR FAULT DONE
 
 }flag_t;
+
+// QUẢN LÝ CÁC ERROR
+
+typedef struct{
+
+	uint8_t under_voltage_error;						// LỖI SỤT ÁP
+
+	uint8_t over_voltage_error;							// LỖI QUÁ ÁP
+
+	uint8_t over_current_error;							// LỖI QUÁ DÒNG
+
+	uint8_t	over_temperature_error;						// LỖI QUÁ NHIỆT
+
+	uint8_t driver_error;								// LỖI DRIVER
+
+	uint8_t encoder_error;								// LỖI ENCODER
+
+	uint8_t shaft_broken_error;							// LỖI GÃY TRỤC ĐỘNG CƠ
+
+}sys_error_t;
 
 
 #endif /* MOTORAPP_H_ */

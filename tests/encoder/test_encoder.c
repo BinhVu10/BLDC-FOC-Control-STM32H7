@@ -96,7 +96,10 @@ int main(void)
     near(e.multi_angle_m, PI / 2.0f);
     near(e.mechanical_zero_angle, 0.0f);
     near(e.mechanical_angle, (PI / 2.0f) / GEAR_RATIO);
-    near(e.theta_e, PI / 2.0f - ENCODER_OFFSET);
+    float expected_theta_e = PI / 2.0f - ENCODER_OFFSET;
+    while (expected_theta_e < 0.0f) expected_theta_e += TWO_PI;
+    while (expected_theta_e >= TWO_PI) expected_theta_e -= TWO_PI;
+    near(e.theta_e, expected_theta_e);
     sample(&e, 8192U);
     near(e.mechanical_angle, (PI / 2.0f) / GEAR_RATIO);
 

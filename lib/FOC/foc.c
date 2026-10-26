@@ -123,7 +123,7 @@ void foc_speed_ctrl_run(foc_t *foc, const encoder_t *encoder, float rpm_ref){
 	foc_current_ctrl_run(foc, encoder, foc->id, foc->iq);
 }
 
-// ĐIỀU KHIỂN VỊ TRÍ (SAU GEAR)
+// ĐIỀU KHIỂN VỊ TRÍ (SAU GEAR) - CASCADE
 void foc_ctrl_pos_run(foc_t *foc, const encoder_t *encoder, float pos_ref_rad){
 
 	if (foc == NULL) {

@@ -64,6 +64,7 @@ bool run_calib_encoder(foc_t *foc, encoder_t *encoder, uint8_t cycle_count){
 		HAL_Delay(200);										// DELAY ĐỂ GIỮ ỔN ĐỊNH ROTOR
 
 		// GỬI LỆNH ĐỌC ENCODER ĐỂ LẤY OFFSET
+
 		if (encoder_Read_Polling(encoder) != HAL_OK) {
 
 			goto calib_done;
@@ -163,6 +164,7 @@ bool run_calib_encoder(foc_t *foc, encoder_t *encoder, uint8_t cycle_count){
 
 	// DÙNG LẠI FRAME HỢP LỆ CUỐI ĐỂ TÍNH GÓC ĐIỆN VỚI OFFSET MỚI.
 	encoder_Read_Angle(encoder);
+
 	success = true;
 
 calib_done:

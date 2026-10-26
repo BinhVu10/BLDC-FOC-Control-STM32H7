@@ -37,6 +37,7 @@
 #include <config.h>
 #include "Calib.h"
 #include "encoder_mt6826.h"
+#include "adrc.h"
 #include "uart_logger.h"
 /* USER CODE END Includes */
 
@@ -104,10 +105,15 @@
 	// KHỞI TẠO STRUCT MANAGE FLAG
 	volatile flag_t sys_flag = { .start_req = 1U, .run_req = 0U, .stop_req = 0U, .mcu_reset_req = 0U,
 
-								.change_mode = 0U, .current_offset_done = 0, .homing_done = 0U};
+								.change_mode = 0U, .current_offset_done = 0, .homing_done = 0U, .calib_encoder_offet_done = 0U};
 
 	// KHỞI TẠO START UP STAGE
 	volatile start_up_stage_t start_up_stage = POWER_UP;
+
+
+	// KHỞI TẠO ADRC CONTROLLER
+	LADRC_t ladrc;
+
 
 /* USER CODE END PV */
 
@@ -176,16 +182,26 @@ int main(void)
 //
 //  run_calib_encoder(&foc, &encoder, CALIB_CYCLE);
 
+  uint32_t start_time = HAL_GetTick();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
+
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  // LED BLINKING JUST FOR VISUALIZE 1 secs
+	  if(HAL_GetTick() - start_time >= 1500U){
+
+		  HAL_GPIO_TogglePin(LED_STATUS_GPIO_Port, LED_STATUS_Pin);					// Nháy led
+
+		  start_time = HAL_GetTick();
+
+	  }
+
 	  //YÊU CẦU RESET MCU
 	  if(sys_flag.mcu_reset_req == 1){
-
-		  sys_flag.mcu_reset_req = 0 ;
 
 		  NVIC_SystemReset();
 
@@ -233,6 +249,8 @@ int main(void)
 			  		  homing_stall_start_tick = 0U;
 
 			  		  foc_init(&foc);															// KHỞI TẠO FOC
+
+					  ladrc_init(&ladrc, CURRENT_MAX, -CURRENT_MAX);							// KHỞI TẠO ADRC SPEED CONTROLLER
 
 			  		  // SLAVE INIT (CHƯA DEVELOP)
 
@@ -287,6 +305,47 @@ int main(void)
 
 			  		  }
 
+					  sys_flag.calib_encoder_offet_done = 0;
+
+					  start_up_stage = AUTO_CALIB;
+
+					  break;
+
+				  case AUTO_CALIB:
+				  {
+					  foc_off(&foc);
+
+					  ladrc_reset(&ladrc);
+
+					  // ADC ISR KHÔNG START DMA MỚI; CHỜ FRAME ĐANG CHẠY KẾT THÚC.
+					  uint32_t dma_wait_tick = HAL_GetTick();
+
+					  while (encoder.dma_busy && (HAL_GetTick() - dma_wait_tick < 10U)) {
+
+					  }
+
+					  if (encoder.dma_busy || !run_calib_encoder(&foc, &encoder, CALIB_CYCLE)) {
+
+						  foc_off(&foc);
+
+						  drv_disable();
+
+						  sys_state = SYS_FAULT;
+
+						  break;
+					  }
+
+					  // BỎ DELTA TÍCH LŨY TỪ CÁC LẦN ĐỌC POLLING TRƯỚC KHI ĐO TỐC ĐỘ LẠI.
+					  encoder.angle_delta_sum = 0.0f;
+
+					  encoder.speed_cnt = 0U;
+
+					  encoder.speed_after_gear = 0.0f;
+
+					  encoder.speed_filter_after_gear = 0.0f;
+
+					  sys_flag.calib_encoder_offet_done = 1;
+
 			  		  current_homing = 0.0f;
 
 			  		  homing_start_tick = 0U;
@@ -296,6 +355,7 @@ int main(void)
 			  		  start_up_stage = HOMING;
 
 			  		  break;
+				  }
 
 			  	 // HOMING MECHANICAL
 			  	  case HOMING:
@@ -418,6 +478,8 @@ int main(void)
 
 				  // RESET TOÀN BỘ CONTROL STATE TRƯỚC KHI CHẠY MODE MỚI
 				  foc_off(&foc);
+
+				  ladrc_reset(&ladrc);
 
 				  ctrl_mode = user_command.user_cmd_mode;
 
@@ -625,6 +687,13 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
 	 // READ CURRENT
 	 current_sensor_read(&foc, &current_sensor);
 
+	 // CALIB GIỮ QUYỀN ĐIỀU KHIỂN PWM VÀ SPI POLLING; ADC VẪN ĐO DÒNG/VBUS.
+	 if ((sys_state == SYS_START_UP) && (start_up_stage == AUTO_CALIB)) {
+
+		 return;
+
+	 }
+
 	 encoder_Update_Speed(&encoder);
 
 	 encoder_Start_Read_DMA(&encoder);
@@ -671,6 +740,23 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
 
 				foc_speed_ctrl_run(&foc, &encoder, user_command.rpm_ref);							// RUN SPEED CONTROLLER
 
+//				foc.speed_cnt++;
+//
+//				if(foc.speed_cnt >= SPEED_DIV){
+//
+//					// TEST ADRC SPEED CONTROLLER
+//
+//					foc.iq = ladrc_update(&ladrc, user_command.rpm_ref, encoder.speed_after_gear);
+//
+//					foc.id = 0 ;
+//
+//					foc.speed_cnt = 0 ;
+//				}
+//
+//					foc_current_limit_dq(&foc, &foc.id, &foc.iq);
+//
+//					foc_current_ctrl_run(&foc, &encoder, foc.id, foc.iq);
+
 				break;
 
 			case CURRENT_CTRL_MODE:
@@ -714,6 +800,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
 
 				foc_off(&foc);																		// TẮT MOTOR, RESET BỘ CONTROL
 
+				ladrc_reset(&ladrc);
+
 				break;
 		}
     }
@@ -736,6 +824,8 @@ void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef *hadc){
     else {
 
 		  foc_off(&foc);
+
+		  ladrc_reset(&ladrc);
 
 		  return;
 
@@ -768,6 +858,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		log_data[LOG_SPEED]    = encoder.speed_filter_after_gear;
 
 		log_data[LOG_POSITION] = encoder.mechanical_angle_deg;
+
+		log_data[LOG_V_BUS] = foc.v_bus;
+
+		log_data[LOG_SYS_STAGE] = sys_state;
+
+		log_data[LOG_BOOT_STAGE] = 0;
 
 		switch (ctrl_mode) {
 
