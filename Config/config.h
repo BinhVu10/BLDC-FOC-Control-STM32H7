@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-/*
+/**************************************************************************************************************
  * MOTOR CONFIGURATION
  * */
 
@@ -90,16 +90,16 @@
 #define ANGLE_MIN					  -99999.0f					// KHÔNG CHẶN HÀNH TRÌNH
 #endif
 
-/*
+/***************************************************************************************************
  * ENCODER CONFIGURATION
  * */
 #define ENCODER_CPR                    32768            		// SỐ XUNG TRÊN 1 VÒNG ENCODER
 #define CNT_ENCODER_ERROR_MAX          1000U            		// BỘ ĐẾM LỖI ENCODER
 
-/*
+/***************************************************************************************************
  * CONTROL CONFIGURATION
  * */
-#define SPEED_BW_HZ						100.0f											// BĂNG THÔNG VÒNG VẬN TỐC
+#define SPEED_BW_HZ					   50.0f											// BĂNG THÔNG VÒNG VẬN TỐC
 
 #define FOC_FREQ_HZ                    20000            								// TẦN SỐ VÒNG DÒNG (FOC), 20KHZ
 #define FOC_TS                         (1.0f/(float) FOC_FREQ_HZ)
@@ -130,30 +130,41 @@
 #define KI_POS                         0.0f
 #define AW_GAIN_POS                    0.1f
 
-// ADRC SPEED CONTROLLER (SECOND ORDER)
-#define ADRC_TS						   FOC_SPEED_TS										// CHU KỲ ĐIỀU KHIỂN ADRC SPEED
-#define ESO_BW_HZ					   200.0f											// BĂNG THÔNG BẰNG 1.5 LẦN BĂNG THÔNG VÒNG VẬN TỐC
-#define ESO_BW						   TWO_PI*ESO_BW_HZ									// BĂNG THÔNG W_ESO
-#define ESO_L1						   30.0f											// GAIN L1 MIỀN LIÊN TỤC
-#define ESO_L2						   900.0f											// GAIN L2 MIỀN LIÊN TỤC
-#define ESO_L1_DISCRETE				   0.3140778341f									// GAIN L1 MIỀN RỜI RẠC
-#define ESO_L2_DISCRETE				   29.51380332f										// GAIN L2 MIỀN RỜI RẠC
-#define ADRC_B0					  	   150.0f										    // THAM SỐ ĐỐI TƯỢNG
-#define ADRC_KP						   TWO_PI*SPEED_BW_HZ								// GAIN BỘ ĐIỀU KHIỂN - CONTROL OUTPUT
-#define ADRC_KI						   0.0f												// GAIN BỘ ĐIỀU KHIỂN TÍCH PHÂN
-#define ADRC_AW						   0.20f											// ANTI-WINDUP TÍCH PHÂN
+// ADRC SPEED CONTROLLER CONTINOUS TIME
+#define ADRC_TS						   FOC_SPEED_TS								// CHU KỲ ĐIỀU KHIỂN ADRC SPEED
+#define ESO_BW_HZ					   200.0f									// BĂNG THÔNG BẰNG 1.5 LẦN BĂNG THÔNG VÒNG VẬN TỐC
+#define ESO_BW						   TWO_PI*ESO_BW_HZ							// BĂNG THÔNG W_ESO
+#define ESO_L1						   30.0f									// GAIN L1 MIỀN LIÊN TỤC
+#define ESO_L2						   900.0f									// GAIN L2 MIỀN LIÊN TỤC
+#define ADRC_B0					  	   150.0f									// THAM SỐ ĐỐI TƯỢNG
+#define ADRC_KP						   TWO_PI*SPEED_BW_HZ						// GAIN BỘ ĐIỀU KHIỂN - CONTROL OUTPUT
+#define ADRC_KI						   0.0f										// GAIN BỘ ĐIỀU KHIỂN TÍCH PHÂN
+#define ADRC_AW						   0.20f									// ANTI-WINDUP TÍCH PHÂN
+
+// ADRC SPEED CONTROLLER DISCRETE TIME
+#define ADRC_DISCRETE_BW_HZ			   SPEED_BW_HZ								// BĂNG THÔNG BỘ ĐIỀU KHIỂN ADRC
+#define ADRC_DISCRETE_TS			   FOC_SPEED_TS								// CHU KỲ ĐIỀU KHIỂN ADRC SPEED
+#define K_ESO						   3U										// HỆ SỐ TƯƠNG ĐỐI GIỮA BỘ QUAN SÁT VÀ BỘ ĐIỀU KHIỂN
+#define ADRC_DISCRETE_B0			   200U										// CRITICAL GAIN
+#define ADRC_DISCRETE_KP			   0.0f										// HỆ SỐ KP RỜI RẠC
+#define ADRC_DISCRETE_KI			   0.0f										// HẸ SỐ KI RỜI RẠC
+#define ESO_L1_DISCRETE				   0.0f										// GAIN L1 MIỀN RỜI RẠC
+#define ESO_L2_DISCRETE				   0.0f										// GAIN L2 MIỀN RỜI RẠC
+#define ADRC_DISCRETE_AW			   0.15f									// HỆ SỐ ANTI-WINDUP
 
 
-/*
+/************************************************************************************************************
  * ADC CONFIGUARE
  * */
 #define ADC_VREF                       3.3f
-#define ADC_MAX                        65535.0f         								// 16 BIT
+#define ADC_MAX                        65535.0f         						// 16 BIT
 #define ADC_TO_CURRENT                 (ADC_VREF / (ADC_MAX * CURRENT_GAIN))
 #define OFFSET_SAMPLE_NUM              4096
-#define VBUS_DIV_GAIN                  5.7f            									// GAIN ĐIỆN ÁP TỪ MẠCH CHIA ÁP 47K/10K
+#define VBUS_DIV_GAIN                  5.7f            							// GAIN ĐIỆN ÁP TỪ MẠCH CHIA ÁP 47K/10K
 
-// HELPER PARAMETER
+/************************************************************************************************************
+ * HELPER PARAMETER
+ * */
 #define CALIB_CYCLE                    3U
 
 #define PI                             3.14159265f
@@ -165,14 +176,16 @@
 #define SQRT3_BY_TWO                   0.8660254037844386f
 #define ONE_BY_SQRT3                   0.57735026919f
 
-#define CONSTRAIN(val, min, max) \
-    ((val) <= (min) ? (min) : ((val) >= (max) ? (max) : (val)))
+#define CONSTRAIN(val, min, max) 	   ((val) <= (min) ? (min) : ((val) >= (max) ? (max) : (val)))
 
-#define RAD_TO_DEG(rad)                ((rad) * 57.29577951308232f)  				// 180/PI
-#define DEG_TO_RAD(deg)                ((deg) * 0.017453292519943f)  				// PI/180
+#define MAX(a, b) 					   (((a) > (b)) ? (a) : (b))
+
+
+#define RAD_TO_DEG(rad)                ((rad) * 57.29577951308232f)  			// 180/PI
+#define DEG_TO_RAD(deg)                ((deg) * 0.017453292519943f)  			// PI/180
 #define RADS_TO_RPM                    9.54929659f
 
-#define VD_CALIB                       4.0f            								// ĐIỆN ÁP VD ĐỂ CALIB
+#define VD_CALIB                       4.0f            							// ĐIỆN ÁP VD ĐỂ CALIB
 #define VQ_CALIB                       0.0f
 
 #endif

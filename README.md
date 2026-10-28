@@ -1,8 +1,8 @@
 # BLDC/PMSM FOC Control on STM32H743
 
-Firmware điều khiển một động cơ BLDC/PMSM bằng Field-Oriented Control (FOC) trên STM32H743VIH6. Project hiện đã có các vòng điều khiển dòng, tốc độ và vị trí chạy theo ngắt ADC đồng bộ PWM, startup state machine có tự động calibration encoder và homing, chuyển control mode cơ bản, cùng telemetry UART phục vụ tuning. ADRC và PID tổng quát đã có mã nền nhưng chưa tham gia control runtime; bước phát triển tiếp theo là hoàn thiện `SYS_FAULT`, các cơ chế bảo vệ và truyền thông với master.
+Firmware điều khiển một động cơ BLDC/PMSM bằng Field-Oriented Control (FOC) trên STM32H743VIH6. Project hiện đã có các vòng điều khiển dòng, tốc độ và vị trí chạy theo ngắt ADC đồng bộ PWM, startup state machine có tự động calibration encoder và homing, chuyển control mode cơ bản, cùng telemetry UART phục vụ tuning. ADRC liên tục, ADRC rời rạc và PID tổng quát đã có mã nền nhưng chưa tham gia control runtime; bước phát triển tiếp theo là hoàn thiện `SYS_FAULT`, các cơ chế bảo vệ và truyền thông với master.
 
-> Trạng thái tài liệu: đối chiếu với source ngày 2026-10-27. Source hiện tại là căn cứ cuối cùng nếu README và code khác nhau.
+> Trạng thái tài liệu: đối chiếu với source ngày 2026-10-28. Source hiện tại là căn cứ cuối cùng nếu README và code khác nhau.
 
 ## 1. Mục tiêu và ý nghĩa
 
@@ -29,7 +29,7 @@ Repository này mới tập trung vào firmware của một slave STM32 điều 
 
 - Clarke, Park, Clarke-Park và inverse Park transform.
 - SVPWM sáu sector, duty được giới hạn trong `[0, 1]`.
-- PI controller đang dùng trong cascade control; PID tổng quát và LADRC đã có API riêng.
+- PI controller đang dùng trong cascade control; PID tổng quát, LADRC liên tục và LADRC rời rạc đã có API riêng.
 - Vòng dòng `Id/Iq` ở 20 kHz.
 - Vòng tốc độ ở 1 kHz, sinh dòng `Iq` đặt.
 - Vòng vị trí ở 100 Hz, sinh tốc độ đặt.
@@ -51,7 +51,7 @@ Repository này mới tập trung vào firmware của một slave STM32 điều 
 
 ### Đã có khung nhưng chưa tích hợp hoàn chỉnh
 
-- LADRC đã được khởi tạo/reset theo state nhưng lời gọi điều khiển trong speed mode đang comment; speed loop vẫn dùng PI.
+- LADRC liên tục đã được khởi tạo/reset theo state nhưng lời gọi điều khiển trong speed mode đang comment; LADRC rời rạc mới có module độc lập và chưa có call site. Speed loop vẫn dùng PI.
 - PID tổng quát đã có implementation nhưng chưa có call site trong application/control flow.
 - `sys_error_t` đã khai báo các nhóm lỗi dự kiến nhưng chưa được tạo instance hoặc nối vào fault flow.
 - `drv_fault()` đã đọc được chân `nFAULT`, nhưng chưa có fault-handling flow.
@@ -161,7 +161,7 @@ Platform/
 
 lib/
   FOC/                       Control loops, transforms và SVPWM
-  Controller/                PI đang dùng; generic PID và LADRC thử nghiệm
+  Controller/                PI đang dùng; generic PID, LADRC liên tục/rời rạc thử nghiệm
   Sensors/Current Sensor/    Current offset và ADC-to-current conversion
   Sensors/Encorder/          Driver encoder MT6826S
   Calib/                     Calibration offset encoder
@@ -260,7 +260,31 @@ speed reference [RPM after gear]
 
 `Id` được đặt bằng `0` trong speed mode hiện tại.
 
-`LADRC_t` hiện dùng ESO tuyến tính bậc hai và đã được init/reset cùng state machine, nhưng block gọi `ladrc_update()` trong speed mode đang comment. Vì vậy đường điều khiển runtime chính thức vẫn là PI; LADRC mới là nền thử nghiệm cần kiểm chứng và tune trên phần cứng trước khi kích hoạt.
+`LADRC_t` hiện dùng ESO tuyến tính bậc hai và đã được init/reset cùng state machine, nhưng block gọi `ladrc_update()` trong speed mode đang comment. Module `LADRC_DISCRETE_t` thiết kế trực tiếp trong miền rời rạc cũng chưa có call site. Vì vậy đường điều khiển runtime chính thức vẫn là PI; cả hai implementation LADRC mới là nền thử nghiệm cần kiểm chứng và tune trên phần cứng trước khi kích hoạt.
+
+### Thiết kế LADRC rời rạc từ băng thông và tần số lấy mẫu
+
+LADRC rời rạc dùng cùng nhịp với vòng tốc độ. Với tần số lấy mẫu `f_s` và chu kỳ `T_s = 1/f_s`, băng thông vòng kín được chọn là `f_bw`, sau đó đổi sang rad/s:
+
+```text
+omega_CL  = 2*pi*f_bw
+omega_ESO = K_ESO*omega_CL
+```
+
+Hai pole liên tục được ánh xạ chính xác sang miền `z` tại chu kỳ lấy mẫu hiện tại:
+
+```text
+z_CL  = exp(-omega_CL*T_s)
+z_ESO = exp(-omega_ESO*T_s)
+
+kp = (1 - z_CL)/T_s
+L1 = 1 - z_ESO^2
+L2 = (1 - z_ESO)^2/T_s
+```
+
+Các công thức trên được dùng khi `ADRC_DISCRETE_KP`, `ESO_L1_DISCRETE` và `ESO_L2_DISCRETE` bằng `0`; đặt macro khác `0` sẽ override gain tương ứng. `b0` là ước lượng input gain của đối tượng (xấp xỉ `Kt/J`), không được suy ra từ băng thông và vẫn phải nhận dạng/tune trên hệ thật.
+
+Cấu hình hiện tại có `f_s = 1 kHz`, `T_s = 1 ms`, `f_bw = 50 Hz` và `K_ESO = 3`, nên `f_ESO = 150 Hz`. Các giá trị tự tính xấp xỉ là `z_CL = 0.7304`, `z_ESO = 0.3897`, `kp = 269.60`, `L1 = 0.8482` và `L2 = 372.51`. Observer bandwidth phải nằm dưới Nyquist (`f_s/2`) và cần có khoảng cách đủ lớn; tăng `f_bw` hoặc `K_ESO` giúp đáp ứng nhanh hơn nhưng làm hệ nhạy hơn với noise, trễ lấy mẫu và sai số `b0`. Thứ tự tune dự kiến là chọn `f_bw` theo động học mong muốn, tăng `K_ESO` vừa đủ để bám nhiễu, rồi xác nhận/tune `b0` và giới hạn output trên phần cứng.
 
 ### Vòng dòng và điều chế
 
@@ -595,7 +619,7 @@ Khi phát triển:
 - `MOTOR_TYPE = 0` vẫn chạy homing với dòng âm dù profile được mô tả là motor không lắp cơ khí; cần xác minh trước khi cấp công suất.
 - UART telemetry là một chiều, không có command parser, sequence number hoặc cơ chế backpressure ngoài việc bỏ mẫu khi DMA bận.
 - `LOG_TEMPERATURE` và `LOG_CONTROL_MODE` chưa được cập nhật nên vẫn là `NaN`; `LOG_BOOT_STAGE` hiện hard-code bằng `0` thay vì `start_up_stage`.
-- Generic PID chưa có call site; LADRC chưa active vì `ladrc_update()` vẫn đang comment trong speed mode.
+- Generic PID chưa có call site; LADRC liên tục chưa active vì `ladrc_update()` vẫn đang comment trong speed mode, còn LADRC rời rạc chưa được nối vào application flow.
 - `Hand_motor_control.ioc` vẫn giữ UART8 `921600 baud` và TIM7 `PSC=1999`, `ARR=999`, trong khi generated source đang dùng 1 Mbaud và `PSC=999`, `ARR=1999`. Hai cấu hình TIM7 đều cho 100 Hz, nhưng cần đồng bộ `.ioc` trước lần generate code kế tiếp để tránh ghi đè source.
 - Profile `MOTOR_TYPE = 3` hiện không có `ENCODER_OFFSET` active; đổi sang profile này sẽ cần bổ sung/xác nhận offset trước khi build và chạy.
 - Encoder offset chưa lưu non-volatile.
