@@ -165,7 +165,7 @@
 /************************************************************************************************************
  * HELPER PARAMETER
  * */
-#define CALIB_CYCLE                    3U
+#define CALIB_CYCLE                    2U
 
 #define PI                             3.14159265f
 #define TWO_PI                         6.283185307f
@@ -185,7 +185,7 @@
 #define DEG_TO_RAD(deg)                ((deg) * 0.017453292519943f)  			// PI/180
 #define RADS_TO_RPM                    9.54929659f
 
-#define VD_CALIB                       4.0f            							// ĐIỆN ÁP VD ĐỂ CALIB
+#define VD_CALIB                       3.0f            							// ĐIỆN ÁP VD ĐỂ CALIB
 #define VQ_CALIB                       0.0f
 
 #endif

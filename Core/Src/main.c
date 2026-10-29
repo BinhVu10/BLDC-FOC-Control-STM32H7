@@ -83,24 +83,10 @@
 
 	volatile ctrl_mode_t ctrl_mode = POS_CTRL_MODE;								// MANAGE MODE CONTROL (DEFAULT LÀ POSITION )
 
-	volatile user_command_t user_command = {									// MANAGE USER COMMAND (HIGH LEVEL)
+	// MANAGE USER COMMAND (HIGH LEVEL)
+	volatile user_command_t user_command = { .user_cmd_mode = POS_CTRL_MODE, .pos_ref_deg = 0.0f, .id_ref = 0.0f, .iq_ref = 0.0f,
 
-		.user_cmd_mode = POS_CTRL_MODE,
-
-		.pos_ref_deg = 0.0f,
-
-		.id_ref = 0.0f,
-
-		.iq_ref = 0.0f,
-
-		.rpm_ref = 0.0f,
-
-		.vd_ref = 0.0f,
-
-		.vq_ref = 0.0f,
-
-		.theta_e_ref = 0.0f
-	};
+											 .rpm_ref = 0.0f,   .vd_ref = 0.0f,  .vq_ref = 0.0f,  .theta_e_ref = 0.0f };
 
 	// KHỞI TẠO STRUCT MANAGE FLAG
 	volatile flag_t sys_flag = { .start_req = 1U, .run_req = 0U, .stop_req = 0U, .mcu_reset_req = 0U,
@@ -263,11 +249,7 @@ int main(void)
 			  		  pwm_start();																// BẬT TIMER TẠO TRGO, DUTY 3 PHA BẰNG 50%
 
 			  		  // SET DUTY 3 PHA BẰNG 50% NHẰM CALIB CURRENT SENSOR
-			  		  pwm_set((uint32_t)  htim1.Init.Period / 2U,
-
-			  				  (uint32_t) htim1.Init.Period / 2U,
-
-			  				  (uint32_t) htim1.Init.Period / 2U);
+					  pwm_set((uint32_t)  htim1.Init.Period / 2U,   (uint32_t) htim1.Init.Period / 2U, (uint32_t) htim1.Init.Period / 2U);
 
 			  		  start_up_stage = CURRENT_OFFSET;
 
@@ -311,6 +293,7 @@ int main(void)
 
 					  break;
 
+				  // CALIB ENCODER OFFSET
 				  case AUTO_CALIB:
 				  {
 					  foc_off(&foc);
@@ -371,7 +354,7 @@ int main(void)
 			  		// KHỞI TẠO DÒNG HOME
 			  		  if(MOTOR_TYPE == 1)
 
-			  			  current_homing = CURRENT_HOME;						// BƠM DÒNG DƯƠNG �?Ể HOME NẾU TYPE 1
+						  current_homing = CURRENT_HOME;						// BƠM DÒNG DƯƠNG FOR HOME NẾU TYPE 1
 
 			  		  else
 
@@ -459,6 +442,7 @@ int main(void)
 		 // MODE READY: SẴN SÀNG CHẠY KHI CÓ YÊU CẦU
 		  case SYS_READY:
 
+			  // KHI CÓ YÊU CẦU DỪNG
 			  if(sys_flag.stop_req == 1){
 
 				  sys_flag.stop_req = 0 ;
@@ -470,6 +454,7 @@ int main(void)
 				  break;
 			  }
 
+			  // KHI CÓ YÊU CẦU CHẠY HOẶC CHUYỂN MODE
 			  if(sys_flag.run_req == 1 || sys_flag.change_mode == 1){
 
 				  sys_flag.change_mode = 0;										              // RESET CỜ
@@ -492,7 +477,7 @@ int main(void)
 
 			  break;
 
-	  	  // RUNNING: MODE CONTROL CHẠY
+		  // RUNNING: MODE CONTROL RUN
 	  	  case SYS_RUNNING:
 
 	  		 // KHI CÓ YÊU CẦU DỪNG
@@ -500,12 +485,12 @@ int main(void)
 
 	  			  sys_flag.stop_req = 0;													// RESET CỜ
 
-	  			  sys_state = SYS_READY;												    // STOP CONTROL VÀ QUAY VỀ READY
+				  sys_state = SYS_READY;												    // STOP CONTROL VÀ BACK TO READY
 
 	  			  break;
 	  		  }
 
-	  		  // KHI RUNNING MÀ NGƯỜI DÙNG CONVERT MODE (SAU NÀY SẼ CÓ THỂ THAY �?ỔI KHI THỰC HIỆN MASTER SPI)
+			  // KHI RUNNING MÀ NGƯỜI DÙNG CONVERT MODE (SAU NÀY SẼ CÓ THỂ CHANGE KHI THỰC HIỆN MASTER SPI)
 	  		  if(ctrl_mode != user_command.user_cmd_mode){
 
 	  			  // DỪNG CONTROL TRƯỚC; ADC ISR SẼ CHƯA  OUTPUT VỀ 0
@@ -513,7 +498,7 @@ int main(void)
 
 	  			  sys_flag.change_mode = 1;
 
-	  			  // SET POSITION , SPEED , DÒNG HIỆN TẠI LÀ �?IỂM BẮT �?ẦU NẾU �?ỔI MODE
+				  // SET POSITION , SPEED , DÒNG HIỆN TẠI
 	  			  user_command.pos_ref_deg = encoder.mechanical_angle_deg;
 
 	  			  user_command.rpm_ref = 0.0f;
